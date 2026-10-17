@@ -272,7 +272,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Server mode keeps nothing in localStorage: the server is the source of truth.
   const load = <T,>(key: string, fallback: T): T => (isServerMode ? fallback : loadJson<T>(key, fallback));
 
-  const [role, setRoleState] = useState<RoleType | null>(serverUser?.role ?? 'parent');
+  const [role, setRoleState] = useState<RoleType | null>(serverUser?.role ?? null);
   const [selectedChildId, setSelectedChildId] = useState<string>(serverUser ? (auth.children_[0]?.id ?? serverUser.childIds[0] ?? '') : 'child-lama');
   const [activeTab, setActiveTabState] = useState<string>(serverUser ? DEFAULT_TAB[serverUser.role] : 'Home');
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
