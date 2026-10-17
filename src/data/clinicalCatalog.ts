@@ -64,6 +64,10 @@ export const BEHAVIOR_PROCEDURES: ProcedureItem[] = [
 ];
 
 export const SPEECH_SPECIFIC_PROCEDURES: ProcedureItem[] = [
+  // In-session tools: they appear on the Today screen only when they are in the plan.
+  { id: 'wh_drill', name: 'WH-question drill (where, what, who…)', category: 'speech_specific' },
+  { id: 'aac_pad', name: 'AAC pad with speech output', category: 'speech_specific' },
+  { id: 'artic_drill', name: 'Articulation drill', category: 'speech_specific' },
   { id: 'milieu', name: 'Milieu teaching', category: 'speech_specific' },
   { id: 'time_delay', name: 'Time delay', category: 'speech_specific' },
   { id: 'mand_model', name: 'Mand-model', category: 'speech_specific' },
@@ -77,6 +81,9 @@ export const SPEECH_SPECIFIC_PROCEDURES: ProcedureItem[] = [
 ];
 
 export const OT_SPECIFIC_PROCEDURES: ProcedureItem[] = [
+  // In-session tools: they appear on the Today screen only when they are in the plan.
+  { id: 'ta_activity', name: 'Task analysis activity (hand-washing, buttoning…)', category: 'ot_specific' },
+  { id: 'sensory_log', name: 'Sensory diet & proprioceptive log', category: 'ot_specific' },
   { id: 'graded_activity', name: 'Graded activity', category: 'ot_specific' },
   { id: 'sensory_diet', name: 'Sensory diet', category: 'ot_specific' },
   { id: 'regulation_strat', name: 'Regulation strategies', category: 'ot_specific' },
@@ -130,6 +137,7 @@ export const CLINICAL_MEASURES: MeasureItem[] = [
   // Speech specific
   { id: 'cueing_level', name: 'Cueing level', category: 'speech_specific', type: 'cueing' },
   { id: 'mlu', name: 'Language sample (MLU)', category: 'speech_specific', type: 'mlu' },
+  { id: 'aac_core', name: 'AAC core selections', category: 'speech_specific', type: 'aac' },
 
   // Remedial specific
   { id: 'wcpm', name: 'Words correct per minute', category: 'remedial_specific', type: 'fluency' },

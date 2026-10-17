@@ -1,5 +1,9 @@
-import React, { useState } from 'react';
+import { HomeTasksCard } from './HomeTasksCard';
+import { BehaviorPlanCard } from './BehaviorPlanCard';
+import { VoiceTipsCard } from './VoiceTipsCard';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { Avatar, ChatComposer, ChatHeader, ChatListRow, ChatThread, messagePreview } from '../common/chat/WhatsAppChat';
 import { StatusChipType, ChatContact, Target } from '../../types';
 import { 
   ShieldCheck, 
@@ -61,11 +65,16 @@ export const ParentPortal: React.FC = () => {
     activeContactId,
     setActiveContactId,
     sendContactMessage,
+    markContactRead,
     triggerConfetti,
     showNotification
   } = useApp();
 
   const isAr = language === 'ar';
+
+  useEffect(() => {
+    if (activeContactId) markContactRead(activeContactId);
+  }, [activeContactId, contacts]);
 
   // Modals state
   const [showConsentModal, setShowConsentModal] = useState(false);
@@ -266,6 +275,12 @@ export const ParentPortal: React.FC = () => {
           </div>
         </div>
       </div>
+
+      <VoiceTipsCard />
+
+      <BehaviorPlanCard />
+
+      <HomeTasksCard />
 
       {/* 3. Quick actions Section - Comprehensive & Connected across all pages */}
       <div>
@@ -1674,301 +1689,122 @@ export const ParentPortal: React.FC = () => {
   /* TAB 5: MESSAGES (Exact match to Screenshot 3)       */
   /* ---------------------------------------------------- */
   const renderMessagesTab = () => {
-    // If no active contact is chosen, show the CHATS LIST SCREEN (Screenshot 3)
+    // No conversation chosen: the chat list, like WhatsApp's.
     if (!activeContact) {
+      const pill = (id: typeof chatCategoryFilter, label: string, n?: number) => (
+        <button
+          key={id}
+          onClick={() => setChatCategoryFilter(id)}
+          className={`px-3.5 py-1.5 rounded-full text-[13px] font-medium flex items-center gap-1.5 shrink-0 transition ${chatCategoryFilter === id ? 'bg-[#D9FDD3] dark:bg-[#103529] text-[#0B6B53] dark:text-[#06CF9C]' : 'bg-[#F0F2F5] dark:bg-[#202C33] text-[#54656F] dark:text-[#8696A0]'}`}
+        >
+          <span>{label}</span>
+          {n !== undefined && n > 0 && <span className="text-[11px] opacity-80">{n}</span>}
+        </button>
+      );
       return (
-        <div className="space-y-4 pb-28 animate-in fade-in">
-          {/* Header in page matching Screenshot 3 */}
-          <div className="flex items-center justify-between">
+        <div className="space-y-3 pb-28 md:pb-12 animate-in fade-in" data-testid="chat-list">
+          <div className="flex items-end justify-between">
             <div>
-              <h1 className="font-heading text-3xl font-bold text-[#1F1B3A] dark:text-white">
-                Chats
-              </h1>
-              <p className="text-xs text-[#6B6785] dark:text-[#A5A0C2] mt-0.5">
-                Lama Alharbi's Care Circle • 5 Specialists
-              </p>
-            </div>
-
-            {/* Filter and New Message icons */}
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => showNotification('Filter contacts options')}
-                className="w-10 h-10 rounded-full bg-teal-50 dark:bg-teal-950/60 text-teal-700 dark:text-teal-300 flex items-center justify-center shadow-xs"
-              >
-                <Filter className="w-5 h-5" />
-              </button>
-              <button
-                onClick={() => showNotification('Compose new message to team')}
-                className="w-10 h-10 rounded-full bg-[#0D9488] text-white flex items-center justify-center shadow-xs hover:bg-[#0F766E]"
-              >
-                <Edit className="w-5 h-5" />
-              </button>
+              <h1 className="font-heading text-[28px] font-bold text-[#111B21] dark:text-[#E9EDEF] leading-tight">{isAr ? 'المحادثات' : 'Chats'}</h1>
+              <p className="text-xs text-[#667781] dark:text-[#8696A0] mt-0.5">{activeChild.name} · {isAr ? 'فريق الرعاية' : 'care team'} · {contacts.length}</p>
             </div>
           </div>
 
-          {/* Search bar matching Screenshot 3 */}
           <div className="relative">
-            <Search className="w-4 h-4 text-[#6B6785] absolute left-3.5 rtl:left-auto rtl:right-3.5 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[#667781] absolute start-4 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search chats or messages..."
-              className="w-full py-2.5 pl-10 pr-4 rtl:pl-4 rtl:pr-10 rounded-2xl bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-xs sm:text-sm text-[#1F1B3A] dark:text-white placeholder-[#6B6785] outline-hidden shadow-xs"
+              aria-label={isAr ? 'ابحث في المحادثات' : 'Search chats'}
+              placeholder={isAr ? 'ابحث أو ابدأ محادثة' : 'Search chats or messages'}
+              className="w-full py-2.5 ps-11 pe-4 rounded-full bg-[#F0F2F5] dark:bg-[#202C33] text-[15px] text-[#111B21] dark:text-[#E9EDEF] placeholder-[#667781] outline-hidden"
             />
           </div>
 
-          {/* Filter Pills matching Screenshot 3 */}
-          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1">
-            <button
-              onClick={() => setChatCategoryFilter('all')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shrink-0 transition ${
-                chatCategoryFilter === 'all'
-                  ? 'bg-[#0D9488] text-white shadow-xs'
-                  : 'bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785]'
-              }`}
-            >
-              <span>All</span>
-              <span className="w-4 h-4 rounded-full bg-white/20 text-white text-[10px] flex items-center justify-center">5</span>
-            </button>
-
-            <button
-              onClick={() => setChatCategoryFilter('therapists')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shrink-0 transition ${
-                chatCategoryFilter === 'therapists'
-                  ? 'bg-[#0D9488] text-white shadow-xs'
-                  : 'bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785]'
-              }`}
-            >
-              <span>Therapists</span>
-              <span className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-[10px] flex items-center justify-center">3</span>
-            </button>
-
-            <button
-              onClick={() => setChatCategoryFilter('school')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shrink-0 transition ${
-                chatCategoryFilter === 'school'
-                  ? 'bg-[#0D9488] text-white shadow-xs'
-                  : 'bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785]'
-              }`}
-            >
-              <span>School</span>
-              <span className="w-4 h-4 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 text-[10px] flex items-center justify-center">1</span>
-            </button>
-
-            <button
-              onClick={() => setChatCategoryFilter('unread')}
-              className={`px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1.5 shrink-0 transition ${
-                chatCategoryFilter === 'unread'
-                  ? 'bg-[#0D9488] text-white shadow-xs'
-                  : 'bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785]'
-              }`}
-            >
-              <span>Unread</span>
-            </button>
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-0.5">
+            {pill('all', isAr ? 'الكل' : 'All')}
+            {pill('therapists', isAr ? 'المعالجون' : 'Therapists')}
+            {pill('school', isAr ? 'المدرسة' : 'School')}
+            {pill('unread', isAr ? 'غير مقروءة' : 'Unread', contacts.reduce((a, c) => a + (c.unreadCount || 0), 0))}
           </div>
 
-          {/* Contact Threads List matching Screenshot 3 */}
-          <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[24px] shadow-card divide-y divide-[#E8E2D9]/60 dark:divide-[#2F2952] overflow-hidden">
-            {filteredContacts.map((contact) => (
-              <div
-                key={contact.id}
-                onClick={() => setActiveContactId(contact.id)}
-                className="p-4 flex items-center gap-3.5 cursor-pointer hover:bg-[#FAF6F0] dark:hover:bg-[#252044] transition active:scale-[0.99]"
-              >
-                {/* Avatar Initial with Online Dot */}
-                <div className="relative shrink-0">
-                  <div className={`w-12 h-12 rounded-full ${contact.avatarBg} ${contact.avatarTextColor} font-bold text-lg flex items-center justify-center shadow-xs`}>
-                    {contact.avatarInitial}
-                  </div>
-                  {contact.online && (
-                    <span className="absolute bottom-0 right-0 w-3.5 h-3.5 rounded-full bg-[#10B981] border-2 border-white dark:border-[#1F1B3A]"></span>
-                  )}
-                </div>
-
-                {/* Name, Role & Last Message */}
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between mb-0.5">
-                    <h3 className="font-heading font-bold text-sm sm:text-base text-[#1F1B3A] dark:text-white truncate">
-                      {contact.name}
-                    </h3>
-                    <span className="text-[11px] font-semibold text-teal-700 dark:text-teal-400 shrink-0 ml-1">
-                      {contact.timestamp}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-[#6B6785] dark:text-[#A5A0C2] mb-1">
-                    {contact.roleTitle}
-                  </p>
-
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs text-[#1F1B3A] dark:text-gray-300 truncate max-w-[210px] sm:max-w-xs">
-                      {contact.lastMessage}
-                    </p>
-                    {contact.unreadCount && contact.unreadCount > 0 && (
-                      <span className="w-5 h-5 rounded-full bg-[#10B981] text-white text-[11px] font-bold flex items-center justify-center shrink-0 ml-2">
-                        {contact.unreadCount}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
+          <div className="bg-white dark:bg-[#111B21] rounded-2xl border border-[#E9EDEF] dark:border-[#222D34] overflow-hidden">
+            {filteredContacts.length === 0 && <p className="text-sm text-[#667781] text-center py-8">{isAr ? 'لا توجد محادثات.' : 'No chats found.'}</p>}
+            {filteredContacts.map((contact) => {
+              const visible = contact.messages.filter((m) => m.audience !== 'staff' && (!m.childId || m.childId === activeChild.id));
+              const last = visible[visible.length - 1];
+              return (
+                <ChatListRow
+                  key={contact.id}
+                  avatar={<Avatar initial={contact.avatarInitial} bg={contact.avatarBg} text={contact.avatarTextColor} size={50} online={contact.online} />}
+                  name={contact.name}
+                  role={contact.roleTitle}
+                  time={contact.timestamp}
+                  preview={last ? messagePreview(last, isAr) : contact.lastMessage}
+                  unread={contact.unreadCount || 0}
+                  mineLast={!!last?.isParent}
+                  onClick={() => { setActiveContactId(contact.id); markContactRead(contact.id); }}
+                />
+              );
+            })}
           </div>
         </div>
       );
     }
 
-    // Detailed Chat Conversation View when a Contact is selected
+    // One conversation: green bar, wallpaper with bubbles, rounded input.
+    const visibleMsgs = activeContact.messages.filter((m) => m.audience !== 'staff' && (!m.childId || m.childId === activeChild.id));
+    const iconBtn = 'w-9 h-9 rounded-full hover:bg-white/10 active:scale-95 flex items-center justify-center transition';
     return (
-      <div className="flex flex-col h-[calc(100vh-210px)] pb-24 animate-in fade-in">
-        {/* Top bar with back button, specialist info, and video link */}
-        <div className="p-3 bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-2xl flex items-center justify-between mb-3 shadow-xs">
-          <div className="flex items-center gap-2.5">
-            <button
-              onClick={() => setActiveContactId(null)}
-              className="px-2.5 py-1.5 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-[#4F46E5] dark:text-indigo-300 transition flex items-center gap-1 font-bold text-xs shrink-0"
-              title="Back to all chats"
-            >
-              <ArrowLeft className="w-4 h-4 rtl:rotate-180" />
-              <span>{isAr ? 'المحادثات' : 'Chats'}</span>
-            </button>
-
-            <div className={`w-9 h-9 rounded-full ${activeContact.avatarBg} ${activeContact.avatarTextColor} font-bold text-sm flex items-center justify-center`}>
-              {activeContact.avatarInitial}
-            </div>
-
-            <div>
-              <h4 className="font-heading font-bold text-xs sm:text-sm text-[#1F1B3A] dark:text-white leading-tight">
-                {activeContact.name}
-              </h4>
-              <p className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                {activeContact.online ? '● Online' : 'Active yesterday'} • {activeContact.roleTitle}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              onClick={() => {
-                const discMap: Record<string, string> = {
-                  'contact-slp': 'speech',
-                  'contact-ot': 'ot',
-                  'contact-bcba': 'behavior',
-                  'contact-teacher': 'teacher',
-                };
-                setTargetFilterDiscipline(discMap[activeContact.id] || 'all');
-                setActiveTab('Targets');
-              }}
-              className="px-2.5 py-1 rounded-xl bg-indigo-50 dark:bg-indigo-950 text-[#4F46E5] dark:text-indigo-300 text-xs font-bold hover:bg-indigo-100 flex items-center gap-1 transition"
-              title="View this specialist's assigned clinical targets"
-            >
-              <TargetIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Goals</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setBookSpecialist(activeContact.name);
-                setShowBookSessionModal(true);
-              }}
-              className="px-2.5 py-1 rounded-xl bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300 text-xs font-bold hover:bg-teal-100 flex items-center gap-1 transition"
-              title="Book or request a session with this specialist"
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Book</span>
-            </button>
-
-            <button
-              onClick={() => {
-                setTelehealthSpecialist(activeContact.name);
-                setShowTelehealthModal(true);
-              }}
-              className="p-2 rounded-xl bg-[#0D9488] text-white hover:bg-[#0b7a70] transition shadow-xs"
-              title="Launch encrypted HD video consultation"
-            >
-              <Video className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-
-        {/* Messages Stream */}
-        <div className="flex-1 overflow-y-auto space-y-3 p-1">
-          {activeContact.messages.map((msg) => {
-            const isSenderParent = msg.isParent;
-            return (
-              <div
-                key={msg.id}
-                className={`flex flex-col ${isSenderParent ? 'items-end' : 'items-start'}`}
-              >
-                <div className="flex items-center gap-1.5 mb-1 px-1 text-[11px] text-[#6B6785]">
-                  <span className="font-semibold text-[#1F1B3A] dark:text-white">{msg.senderName}</span>
-                  <span>•</span>
-                  <span>{msg.timestamp}</span>
-                </div>
-
-                <div
-                  className={`max-w-[85%] rounded-2xl p-3.5 shadow-card ${
-                    isSenderParent
-                      ? 'bg-[#0D9488] text-white rounded-tr-xs'
-                      : 'bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-gray-100 rounded-tl-xs'
-                  }`}
-                >
-                  {msg.goalTag && (
-                    <span
-                      className={`inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mb-1.5 ${
-                        isSenderParent
-                          ? 'bg-white/20 text-white'
-                          : 'bg-teal-50 dark:bg-teal-950 text-teal-700 dark:text-teal-300'
-                      }`}
-                    >
-                      🎯 {msg.goalTag}
-                    </span>
-                  )}
-                  <p className="text-xs sm:text-sm leading-relaxed">
-                    {isAr ? msg.contentAr : msg.contentEn}
-                  </p>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Input bar */}
-        <div className="pt-2 bg-[#FBF7F2] dark:bg-[#14122B]">
-          <div className="flex items-center gap-2 bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-2xl p-1.5 shadow-card">
-            <input
-              type="text"
-              value={chatInputText}
-              onChange={(e) => setChatInputText(e.target.value)}
-              placeholder="Type your message to specialist..."
-              className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm outline-hidden text-[#1F1B3A] dark:text-white placeholder-[#6B6785]"
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && chatInputText.trim()) {
-                  sendContactMessage(activeContact.id, chatInputText.trim());
-                  setChatInputText('');
-                }
-              }}
-            />
-            <button
-              onClick={() => {
-                if (chatInputText.trim()) {
-                  sendContactMessage(activeContact.id, chatInputText.trim());
-                  setChatInputText('');
-                }
-              }}
-              className="p-2 rounded-xl bg-[#0D9488] text-white hover:bg-[#0F766E] transition shrink-0"
-            >
-              <Send className="w-4 h-4 rtl:rotate-180" />
-            </button>
-          </div>
+      <div className="flex flex-col h-[calc(var(--app-h)-192px)] mb-[84px] md:mb-4 md:h-[calc(var(--app-h)-180px)] animate-in fade-in" data-testid="chat-view">
+        <div className="flex-1 min-h-0 flex flex-col rounded-2xl overflow-hidden border border-[#E9EDEF] dark:border-[#222D34] shadow-card">
+          <ChatHeader
+            onBack={() => setActiveContactId(null)}
+            backLabel={isAr ? 'المحادثات' : 'Back to chats'}
+            avatar={<Avatar initial={activeContact.avatarInitial} bg={activeContact.avatarBg} text={activeContact.avatarTextColor} size={40} online={activeContact.online} />}
+            title={activeContact.name}
+            subtitle={`${activeContact.online ? (isAr ? 'متصل الآن' : 'online') : (isAr ? 'آخر ظهور أمس' : 'last seen yesterday')} · ${activeContact.roleTitle}`}
+            actions={
+              <>
+                <button
+                  onClick={() => {
+                    const discMap: Record<string, string> = { 'contact-slp': 'speech', 'contact-ot': 'ot', 'contact-bcba': 'behavior', 'contact-teacher': 'teacher' };
+                    setTargetFilterDiscipline(discMap[activeContact.id] || 'all');
+                    setActiveTab('Targets');
+                  }}
+                  className={iconBtn}
+                  aria-label={isAr ? 'أهداف هذا المختص' : "This specialist's goals"}
+                  title={isAr ? 'أهداف هذا المختص' : "This specialist's goals"}
+                ><TargetIcon className="w-5 h-5" /></button>
+                <button onClick={() => { setBookSpecialist(activeContact.name); setShowBookSessionModal(true); }} className={iconBtn} aria-label={isAr ? 'حجز جلسة' : 'Book a session'} title={isAr ? 'حجز جلسة' : 'Book a session'}><Calendar className="w-5 h-5" /></button>
+                <button onClick={() => { setTelehealthSpecialist(activeContact.name); setShowTelehealthModal(true); }} className={iconBtn} aria-label={isAr ? 'مكالمة فيديو' : 'Video call'} title={isAr ? 'مكالمة فيديو' : 'Video call'}><Video className="w-5 h-5" /></button>
+              </>
+            }
+          />
+          <ChatThread
+            messages={visibleMsgs}
+            isMine={(m) => m.isParent}
+            unreadByOther={activeContact.unreadStaff || 0}
+            isAr={isAr}
+            showNames
+            emptyText={isAr ? 'لا توجد رسائل بعد. اكتب رسالتك الأولى.' : 'No messages yet. Write your first message.'}
+            notice={isAr ? 'الرسائل هنا مشتركة فقط مع فريق رعاية طفلك.' : 'Messages here are shared only with your child’s care team.'}
+          />
+          <ChatComposer
+            isAr={isAr}
+            label={isAr ? 'رسالة إلى المختص' : 'Message to specialist'}
+            placeholder={isAr ? 'اكتب رسالة' : 'Type a message'}
+            notify={showNotification}
+            onSend={(text, attachment) => sendContactMessage(activeContact.id, text, undefined, attachment)}
+          />
         </div>
       </div>
     );
   };
 
   return (
-    <div className="max-w-md mx-auto px-4 pt-3">
+    <div className="max-w-md md:max-w-6xl mx-auto px-4 md:px-8 pt-3 md:pt-6">
       {activeTab.toLowerCase() === 'home' && renderHomeTab()}
       {activeTab.toLowerCase() === 'progress' && renderProgressTab()}
       {activeTab.toLowerCase() === 'targets' && renderTargetsTab()}

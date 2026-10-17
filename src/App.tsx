@@ -5,6 +5,8 @@
 
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AuthScreen } from './components/auth/AuthScreen';
 import { Header } from './components/common/Header';
 import { BottomTabBar } from './components/common/BottomTabBar';
 import { LaunchScreen } from './components/launch/LaunchScreen';
@@ -20,76 +22,91 @@ import { ChildScheduleMode } from './components/child/ChildScheduleMode';
 import { PromptAuditModal } from './components/common/PromptAuditModal';
 import { NotificationsModal } from './components/common/NotificationsModal';
 import { SettingsModal } from './components/common/SettingsModal';
-import { FileCheck, Sparkles, AlertCircle } from 'lucide-react';
+import { Sparkles } from 'lucide-react';
 
 const MainContent: React.FC = () => {
   const { role, childScheduleMode, notification } = useApp();
   const [showAuditModal, setShowAuditModal] = useState(false);
 
   return (
-    <div className="min-h-screen bg-[#FBF7F2] dark:bg-[#14122B] text-[#1F1B3A] dark:text-white transition-colors flex flex-col font-sans">
-      {/* Toast Notification */}
-      {notification && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-3 max-w-sm w-[90%] pointer-events-none">
-          <div className="bg-[#1F1B3A] dark:bg-white text-white dark:text-[#1F1B3A] px-4 py-2.5 rounded-2xl shadow-float text-xs font-semibold flex items-center gap-2 border border-white/10 dark:border-gray-800">
-            <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-            <span className="truncate">{notification}</span>
+    <div className="app-backdrop">
+      <div className="app-frame text-[#1F1B3A] dark:text-white font-sans">
+        {/* Toast Notification */}
+        {notification && (
+          <div className="absolute top-[calc(env(safe-area-inset-top)+1rem)] left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-3 w-[90%] max-w-md pointer-events-none">
+            <div className="bg-[#1F1B3A] dark:bg-white text-white dark:text-[#1F1B3A] px-4 py-2.5 rounded-2xl shadow-float text-xs font-semibold flex items-center gap-2 border border-white/10 dark:border-gray-800">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <span className="truncate">{notification}</span>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* Audit button floating badge in bottom right (or top corner) */}
-      <button
-        onClick={() => setShowAuditModal(true)}
-        className="fixed bottom-20 right-4 z-40 bg-[#4F46E5] hover:bg-[#4338CA] text-white p-2.5 rounded-full shadow-warm flex items-center gap-1.5 text-xs font-semibold transition hover:scale-105 group border border-white/20"
-        title="Check Prompt & PDF Compliance Audit"
-      >
-        <FileCheck className="w-4 h-4" />
-        <span className="hidden sm:inline">Prompt & PDF Audit (100%)</span>
-      </button>
+        {/* Render Portal by Role */}
+        {!role ? (
+          <div className="app-scroll">
+            <LaunchScreen />
+          </div>
+        ) : (
+          <>
+            <Header onOpenAudit={() => setShowAuditModal(true)} />
+            <div className="flex-1 min-h-0 flex flex-col md:flex-row relative">
+              <BottomTabBar />
+              <main className="app-scroll flex-1">
+                  {role === 'parent' && <ParentPortal />}
+                {role === 'behavior' && <BehaviorPortal />}
+                {role === 'speech' && <SpeechPortal />}
+                {role === 'ot' && <OTPortal />}
+                {role === 'remedial' && <RemedialPortal />}
+                {role === 'teacher' && <TeacherPortal />}
+                {role === 'supervisor' && <SupervisorPortal />}
+                {role === 'admin' && <AdminPortal />}
+              </main>
+            </div>
+          </>
+        )}
 
-      {/* Render Portal by Role */}
-      {!role ? (
-        <LaunchScreen />
-      ) : (
-        <div className="flex-1 flex flex-col min-h-screen">
-          <Header />
-          <main className="flex-1">
-            {role === 'parent' && <ParentPortal />}
-            {role === 'behavior' && <BehaviorPortal />}
-            {role === 'speech' && <SpeechPortal />}
-            {role === 'ot' && <OTPortal />}
-            {role === 'remedial' && <RemedialPortal />}
-            {role === 'teacher' && <TeacherPortal />}
-            {role === 'supervisor' && <SupervisorPortal />}
-            {role === 'admin' && <AdminPortal />}
-          </main>
-          <BottomTabBar />
-        </div>
-      )}
+        {/* Child Schedule Mode Overlay */}
+        {childScheduleMode && <ChildScheduleMode />}
 
-      {/* Child Schedule Mode Overlay */}
-      {childScheduleMode && <ChildScheduleMode />}
+        {/* Prompt Audit Modal */}
+        <PromptAuditModal isOpen={showAuditModal} onClose={() => setShowAuditModal(false)} />
 
-      {/* Prompt Audit Modal */}
-      <PromptAuditModal
-        isOpen={showAuditModal}
-        onClose={() => setShowAuditModal(false)}
-      />
+        {/* Global Notifications Modal (Bell icon across all portals) */}
+        <NotificationsModal />
 
-      {/* Global Notifications Modal (Bell icon across all portals) */}
-      <NotificationsModal />
-
-      {/* Global Settings Modal (Gear icon across all portals) */}
-      <SettingsModal />
+        {/* Global Settings Modal (Gear icon across all portals) */}
+        <SettingsModal />
+      </div>
     </div>
   );
 };
 
-export default function App() {
+function Gate() {
+  const auth = useAuth();
+
+  if (auth.gate === 'checking' || auth.gate === 'login') {
+    return (
+      <div className="app-backdrop">
+        <div className="app-frame text-[#1F1B3A] font-sans">
+          <div className="app-scroll">
+            <AuthScreen />
+          </div>
+        </div>
+      </div>
+    );
+  }
+  // Keyed by account so signing out / in as someone else starts from a clean state.
   return (
-    <AppProvider>
+    <AppProvider key={auth.user?.id ?? 'demo'}>
       <MainContent />
     </AppProvider>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
   );
 }

@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
+import { procedureName, measureName } from '../../data/planConfig';
+import { SessionPlanner } from '../therapy/SessionPlanner';
+import { SoapNoteCard } from '../common/SoapNoteCard';
+import { SoapArchive } from '../common/SoapArchive';
+import { useBehaviorDatasheet } from '../../hooks/useBehaviorDatasheet';
+import { BehaviorDatasheetViews, DatasheetView } from './BehaviorDatasheetViews';
+import { BipPortal } from './BipPortal';
+import { FamilyPanel } from '../common/FamilyPanel';
+import { BehaviorGraphs } from './BehaviorGraphs';
+import { TargetEditorModal } from './TargetEditorModal';
+import { TargetsPanel } from '../common/TargetsPanel';
+import type { Target } from '../../types';
+import { ShareToTeamModal } from '../common/ShareToTeamModal';
+import { planSectionText, tasksSummary, FUNCTION_NAME } from '../../utils/behaviorReport';
+import { summarizeAbc } from '../../utils/abcAnalysis';
 import { 
-  BEHAVIOR_PROCEDURES, 
-  CLINICAL_MEASURES 
-} from '../../data/clinicalCatalog';
-import { 
-  Check, 
   Play, 
   Pause, 
-  RotateCcw, 
   Plus, 
   Clock, 
   TrendingUp, 
@@ -16,14 +25,21 @@ import {
   Save, 
   Mic, 
   Camera, 
-  ShieldAlert, 
   Sparkles,
-  ChevronRight,
   Sliders,
   CheckCircle2,
-  XCircle,
-  HelpCircle,
-  Eye
+  Calendar,
+  Award,
+  Layers,
+  ChevronRight,
+  Share2,
+  Printer,
+  Copy,
+  Send,
+  X,
+  Check,
+  FileCheck,
+  UserCheck
 } from 'lucide-react';
 
 export const BehaviorPortal: React.FC = () => {
@@ -34,1182 +50,550 @@ export const BehaviorPortal: React.FC = () => {
     language, 
     targets, 
     addSessionResult,
+    saveSession,
+    savedSessions,
+    saveSessionPlan,
+    bips,
+    abcRecords,
+    reinforcers,
+    homeTasks,
+    shareSoapNote,
+    currentUserName,
+    addTarget,
+    updateTarget,
+    deleteTarget,
+    childrenList,
+    setSelectedChildId,
+    getSessionPlan,
     showNotification,
-    triggerConfetti
+    triggerConfetti,
+    sendMessage
   } = useApp();
 
   const isAr = language === 'ar';
 
   // Sub-view on Today tab: 'plan' | 'datasheet' | 'continuous' | 'interval' | 'other_measures'
-  const [sessionSubView, setSessionSubView] = useState<'datasheet' | 'plan' | 'continuous' | 'interval' | 'other_measures'>('datasheet');
+  const [sessionSubView, setSessionSubView] = useState<DatasheetView | 'plan'>('datasheet');
 
-  // Selected procedures and measures matching PDF 1 Page 1
-  const [selectedProcedures, setSelectedProcedures] = useState<string[]>([
-    'prompt_fading',
-    'dtt',
-    'extinction',
-    'visual_schedules'
-  ]);
-  const [selectedMeasures, setSelectedMeasures] = useState<string[]>([
-    'frequency',
-    'mts'
-  ]);
+  // Target add/edit modal: undefined = closed, null = new, Target = editing
+  const [editingTarget, setEditingTarget] = useState<Target | null | undefined>(undefined);
+
+  // Report & Share modal state
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [copiedReport, setCopiedReport] = useState(false);
+
+  // SOAP Notes State matching client screenshot with pre-filled session & object-location data
+  const [soapSubjective, setSoapSubjective] = useState(
+    'Ahmed arrived alert, regulated and cooperative. Maintained calm demeanor and sustained joint attention during tabletop tasks.'
+  );
+  const [soapObjective, setSoapObjective] = useState(
+    'Object-Location & Receptive Identification Task: 8/10 independent trials (80% accuracy). Latency: 1.8s avg. Touch target on table: 88% mastery. Frequency: 4 correct spontaneous mands. Rate: 0.4 resp/min. Cold Probe: 2/3 (+, +, -). Treatment Integrity: 95%.'
+  );
+  const [soapAssessment, setSoapAssessment] = useState(
+    'Demonstrated steady acquisition on object-location spatial prepositions (in, on, under). Response persistence maintained under VR-3 schedule. Met criterion threshold for 3D items with fading gestural prompts.'
+  );
+  const [soapPlan, setSoapPlan] = useState(
+    'Advance object-location tasks to 3-step spatial placements in natural settings. Fade gestural prompting to 4-second latency delay. Train caregivers on Differential Reinforcement of Alternative behavior (DRA) for home carryover.'
+  );
+  const [isAutoDrafting, setIsAutoDrafting] = useState(false);
+
+  // Load configured plan for current child
+  const currentPlan = getSessionPlan(activeChild.id, 'behavior');
+  const selectedProcedures = currentPlan.procedureIds;
+  const selectedMeasures = currentPlan.measureIds;
 
   // Active target for DTT session
-  const behaviorTarget = targets.find(t => t.discipline === 'behavior' && t.childId === activeChild.id) || targets[0];
+  const behaviorTarget = targets.find(t => t.discipline === 'behavior' && t.childId === activeChild.id) || targets.find(t => t.discipline === 'behavior') || targets[0];
 
-  // 1-10 Trial-by-trial DTT state (PDF 1 Page 5)
-  const initialTrials: Array<{ num: number; res: '+' | 'P' | '-' | null }> = [
-    { num: 1, res: '+' },
-    { num: 2, res: '+' },
-    { num: 3, res: 'P' },
-    { num: 4, res: '+' },
-    { num: 5, res: '-' },
-    { num: 6, res: '+' },
-    { num: 7, res: '+' },
-    { num: 8, res: 'P' },
-    { num: 9, res: '+' },
-    { num: 10, res: null },
-  ];
-  const [trials, setTrials] = useState(initialTrials);
-  const [currentPromptLevel, setCurrentPromptLevel] = useState<'Independent' | 'Verbal' | 'Gesture' | 'Model' | 'Partial physical' | 'Full physical'>('Verbal');
+  // Previous scores for this child + target (oldest first) feed trials-to-criterion.
+  const scoreHistory = savedSessions
+    .filter(x => x.role === 'behavior' && x.childId === activeChild.id && x.targetId === behaviorTarget.id && x.summary.percentIndependent !== null && !x.notes.startsWith('[SOAP NOTE]'))
+    .sort((x, y) => x.savedAt.localeCompare(y.savedAt))
+    .map(x => x.summary.percentIndependent as number);
 
-  // Continuous frequency counter state
-  const [frequencyCount, setFrequencyCount] = useState<number>(4);
-  const [frequencyHistory, setFrequencyHistory] = useState<number[]>([4]);
-
-  // MTS interval state
-  const [mtsIntervals, setMtsIntervals] = useState<Array<{ num: number; state: 'Yes' | 'No' | null }>>([
-    { num: 1, state: 'Yes' },
-    { num: 2, state: 'No' },
-    { num: 3, state: 'No' },
-    { num: 4, state: 'Yes' },
-    { num: 5, state: 'No' },
-    { num: 6, state: 'Yes' },
-    { num: 7, state: 'Yes' },
-    { num: 8, state: 'No' },
-    { num: 9, state: null },
-    { num: 10, state: null },
-  ]);
-
-  // Second Observer IOA toggle
-  const [ioaEnabled, setIoaEnabled] = useState<boolean>(false);
-
-  // Continuous Measures Timers & Records (PDF 1 Page 6)
-  const [durationTimerRunning, setDurationTimerRunning] = useState<boolean>(false);
-  const [durationSeconds, setDurationSeconds] = useState<number>(134); // 2:14
-  const [durationEpisodes, setDurationEpisodes] = useState<Array<{ id: number; time: string }>>([
-    { id: 1, time: '1:05' },
-    { id: 2, time: '2:14' }
-  ]);
-
-  // Rate timer
-  const [rateTimerRunning, setRateTimerRunning] = useState<boolean>(true);
-  const [rateResponses, setRateResponses] = useState<number>(4);
-  const [rateElapsedSec, setRateElapsedSec] = useState<number>(750); // 12:30 min
-
-  // Latency & IRT
-  const [latencyTrials, setLatencyTrials] = useState<number[]>([4, 7, 3]);
-  const [irtResponses, setIrtResponses] = useState<Array<{ num: number; time: number }>>([
-    { num: 2, time: 12 },
-    { num: 3, time: 8 },
-    { num: 4, time: 15 }
-  ]);
-
-  // Interval and Sampling (PDF 1 Page 7)
-  const [partialIntervals, setPartialIntervals] = useState<boolean[]>([
-    true, false, true, true, false, false, true, false, true, false
-  ]);
-  const [wholeIntervals, setWholeIntervals] = useState<boolean[]>([
-    true, false, false, true, false, false, false, true, false, false
-  ]);
+  // All live datasheet state (trials, timers, intervals, IOA, integrity...) lives in the hook.
+  const ds = useBehaviorDatasheet(scoreHistory);
+  const plan = { procedureIds: selectedProcedures, measureIds: selectedMeasures };
+  const percentIndependent = ds.percentIndependent;
+  const frequencyCount = ds.s.frequency;
+  const currentPromptLevel = ds.s.promptLevel;
 
   // Notes state
   const [sessionNotes, setSessionNotes] = useState(
     'Leo participated actively in DTT trials for object identification. Responded well to verbal prompt fading on "shoe" and "cup". Mild vocal protest at trial 5 resolved with brief sensory break.'
   );
-  const [isRecordingAudio, setIsRecordingAudio] = useState(false);
 
-  // Timer tick for rate and duration
-  useEffect(() => {
-    let interval: any = null;
-    if (durationTimerRunning) {
-      interval = setInterval(() => {
-        setDurationSeconds(s => s + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [durationTimerRunning]);
-
-  useEffect(() => {
-    let interval: any = null;
-    if (rateTimerRunning) {
-      interval = setInterval(() => {
-        setRateElapsedSec(s => s + 1);
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [rateTimerRunning]);
-
-  // Compute live summary statistics
-  const scoredTrials = trials.filter(t => t.res !== null);
-  const independentTrials = scoredTrials.filter(t => t.res === '+');
-  const percentIndependent = scoredTrials.length > 0 
-    ? Math.round((independentTrials.length / scoredTrials.length) * 100) 
-    : 0;
-
-  const toggleProcedure = (id: string) => {
-    setSelectedProcedures(prev => 
-      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
-    );
-  };
-
-  const toggleMeasure = (id: string) => {
-    setSelectedMeasures(prev => 
-      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
-    );
-  };
-
-  const handleTrialClick = (num: number) => {
-    setTrials(prev => prev.map(t => {
-      if (t.num === num) {
-        const nextRes: '+' | 'P' | '-' | null = 
-          t.res === null ? '+' : t.res === '+' ? 'P' : t.res === 'P' ? '-' : null;
-        return { ...t, res: nextRes };
-      }
-      return t;
-    }));
-  };
+  const buildSessionPayload = (notes: string) => ({
+    childId: activeChild.id,
+    role: 'behavior' as const,
+    therapistName: currentUserName,
+    targetId: behaviorTarget.id,
+    targetName: behaviorTarget.name,
+    procedureIds: selectedProcedures,
+    measureIds: selectedMeasures,
+    data: ds.buildData(),
+    summary: ds.buildSummary(plan),
+    notes,
+  });
 
   const handleSaveSession = () => {
-    addSessionResult(
-      behaviorTarget.id,
-      percentIndependent,
-      `DTT Session: ${percentIndependent}% independent across ${scoredTrials.length} trials.`
-    );
-    if (percentIndependent >= 90) {
+    const summary = ds.buildSummary(plan);
+    saveSession(buildSessionPayload(sessionNotes));
+
+    if ((summary.percentIndependent ?? 0) >= 90) {
       triggerConfetti();
+    }
+    showNotification(
+      summary.percentIndependent !== null
+        ? isAr
+          ? `تم حفظ ورقة البيانات بنجاح (${summary.percentIndependent}%). تم تحديث الأهداف والرسوم البيانية.`
+          : `Datasheet saved! (${summary.percentIndependent}% independent). Targets & graphs updated.`
+        : isAr
+        ? 'تم حفظ ورقة البيانات بنجاح.'
+        : 'Datasheet saved.'
+    );
+  };
+
+  const handleAddMeasure = (id: string) => {
+    if (selectedMeasures.includes(id)) return;
+    saveSessionPlan(activeChild.id, 'behavior', selectedProcedures, [...selectedMeasures, id]);
+    showNotification(isAr ? 'تمت إضافة القياس إلى الخطة وورقة البيانات.' : 'Measure added to your plan and datasheet.');
+  };
+
+  const planData = {
+    childName: activeChild.name,
+    bip: bips.find(b => b.childId === activeChild.id),
+    abc: abcRecords.filter(r => r.childId === activeChild.id),
+    reinforcers: reinforcers.filter(r => r.childId === activeChild.id),
+    tasks: homeTasks.filter(h => h.childId === activeChild.id),
+  };
+  const abcSum = summarizeAbc(planData.abc);
+  const taskSum = tasksSummary(planData.tasks);
+  const topReinf = [...planData.reinforcers].sort((a, b) => b.preference - a.preference).slice(0, 3);
+  const hasPlanData = !!planData.bip || planData.abc.length > 0 || planData.reinforcers.length > 0 || planData.tasks.length > 0;
+  const [reportShare, setReportShare] = useState<'team' | 'supervisor' | null>(null);
+
+  /** Full official report: datasheet numbers + every BIP-tab section that has data. */
+  const buildReportText = () => {
+    const ioa = ds.ioaPercent !== null && (ds.s.ioaOn || selectedMeasures.includes('ioa')) ? ds.ioaPercent + '%' : 'N/A';
+    const head = `NEXIA BRIDGE CLINICAL SESSION REPORT
+Child: ${activeChild.name} (${activeChild.age} yrs)
+Clinician: ${currentUserName} (BCBA)
+Target: ${behaviorTarget.name}
+Performance: ${percentIndependent}% Independent (${ds.scoredCount} trials scored)
+Prompt Level: ${currentPromptLevel}
+Frequency Count: ${frequencyCount}
+IOA Agreement: ${ioa}
+Notes: ${sessionNotes}`;
+    const plan = planSectionText(planData);
+    return plan ? `${head}\n\n${plan}` : head;
+  };
+
+  const handleShareWithParents = () => {
+    sendMessage(
+      `Behavior Therapy Session Report: ${activeChild.name} achieved ${percentIndependent}% independent accuracy in DTT. ${sessionNotes}`,
+      'Behavior Progress'
+    );
+    showNotification(
+      isAr 
+        ? 'تمت مشاركة تقرير الجلسة مع ولي الأمر وفريق الرعاية.' 
+        : 'Session report shared with parents & care circle.'
+    );
+  };
+
+  const handleCopyReport = () => {
+    const reportText = buildReportText();
+
+    try {
+      navigator.clipboard.writeText(reportText);
+      setCopiedReport(true);
+      setTimeout(() => setCopiedReport(false), 2500);
+      showNotification('Report copied to clipboard.');
+    } catch {
+      showNotification('Report text ready.');
     }
   };
 
   /* ---------------------------------------------------- */
-  /* SUBVIEW 1: PLAN THE SESSION (Exact PDF 1 Page 1)    */
-  /* ---------------------------------------------------- */
-  const renderPlanView = () => (
-    <div className="space-y-6 pb-24 animate-in fade-in">
-      <div>
-        <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white mb-1">
-          {isAr ? 'تخطيط الجلسة' : 'Plan the session'}
-        </h2>
-        <p className="text-sm text-[#6B6785] dark:text-[#A5A0C2]">
-          {isAr
-            ? 'اختر الإجراءات وطرق القياس. اختياراتك تقوم ببناء ورقة جمع البيانات آلياً.'
-            : 'Choose what you will use. Your choices set up the datasheet.'}
-        </p>
-      </div>
-
-      {/* Treatment procedures */}
-      <div className="space-y-4">
-        <h3 className="font-heading font-bold text-base text-[#1F1B3A] dark:text-white">
-          {isAr ? 'الإجراءات العلاجية' : 'Treatment procedures'}
-        </h3>
-
-        {/* Skill acquisition and behavior increase */}
-        <div>
-          <h4 className="text-xs font-semibold text-[#6B6785] dark:text-[#8E8AAB] mb-2 uppercase tracking-wider">
-            {isAr ? 'اكتساب المهارات وزيادة السلوك' : 'Skill acquisition and behavior increase'}
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {BEHAVIOR_PROCEDURES.filter(p => p.category === 'skill_acquisition').map((proc) => {
-              const isSelected = selectedProcedures.includes(proc.id);
-              return (
-                <button
-                  key={proc.id}
-                  onClick={() => toggleProcedure(proc.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    isSelected
-                      ? 'bg-[#E0E7FF] border-[#4F46E5] text-[#4F46E5] font-semibold dark:bg-indigo-950 dark:border-indigo-400 dark:text-indigo-200'
-                      : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {isSelected && '✓ '}
-                  {proc.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Behavior reduction */}
-        <div>
-          <h4 className="text-xs font-semibold text-[#6B6785] dark:text-[#8E8AAB] mb-2 uppercase tracking-wider">
-            {isAr ? 'خفض السلوكيات غير المرغوبة' : 'Behavior reduction'}
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {BEHAVIOR_PROCEDURES.filter(p => p.category === 'behavior_reduction').map((proc) => {
-              const isSelected = selectedProcedures.includes(proc.id);
-              return (
-                <button
-                  key={proc.id}
-                  onClick={() => toggleProcedure(proc.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    isSelected
-                      ? 'bg-[#E0E7FF] border-[#4F46E5] text-[#4F46E5] font-semibold dark:bg-indigo-950 dark:border-indigo-400 dark:text-indigo-200'
-                      : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {isSelected && '✓ '}
-                  {proc.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Other treatment procedures */}
-        <div>
-          <h4 className="text-xs font-semibold text-[#6B6785] dark:text-[#8E8AAB] mb-2 uppercase tracking-wider">
-            {isAr ? 'إجراءات علاجية أخرى' : 'Other treatment procedures'}
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {BEHAVIOR_PROCEDURES.filter(p => p.category === 'other').map((proc) => {
-              const isSelected = selectedProcedures.includes(proc.id);
-              return (
-                <button
-                  key={proc.id}
-                  onClick={() => toggleProcedure(proc.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    isSelected
-                      ? 'bg-[#E0E7FF] border-[#4F46E5] text-[#4F46E5] font-semibold dark:bg-indigo-950 dark:border-indigo-400 dark:text-indigo-200'
-                      : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {isSelected && '✓ '}
-                  {proc.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Measurement methods */}
-      <div className="space-y-4 pt-2">
-        <h3 className="font-heading font-bold text-base text-[#1F1B3A] dark:text-white">
-          {isAr ? 'طرق القياس' : 'Measurement methods'}
-        </h3>
-
-        {/* Continuous */}
-        <div>
-          <h4 className="text-xs font-semibold text-[#6B6785] dark:text-[#8E8AAB] mb-2 uppercase tracking-wider">
-            {isAr ? 'القياس المستمر' : 'Continuous'}
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {CLINICAL_MEASURES.filter(m => m.category === 'continuous').map((m) => {
-              const isSelected = selectedMeasures.includes(m.id);
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => toggleMeasure(m.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    isSelected
-                      ? 'bg-[#E0E7FF] border-[#4F46E5] text-[#4F46E5] font-semibold dark:bg-indigo-950 dark:border-indigo-400 dark:text-indigo-200'
-                      : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {isSelected && '✓ '}
-                  {m.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Discontinuous */}
-        <div>
-          <h4 className="text-xs font-semibold text-[#6B6785] dark:text-[#8E8AAB] mb-2 uppercase tracking-wider">
-            {isAr ? 'القياس غير المستمر (فترات)' : 'Discontinuous'}
-          </h4>
-          <div className="flex flex-wrap gap-2">
-            {CLINICAL_MEASURES.filter(m => m.category === 'discontinuous').map((m) => {
-              const isSelected = selectedMeasures.includes(m.id);
-              return (
-                <button
-                  key={m.id}
-                  onClick={() => toggleMeasure(m.id)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all ${
-                    isSelected
-                      ? 'bg-[#E0E7FF] border-[#4F46E5] text-[#4F46E5] font-semibold dark:bg-indigo-950 dark:border-indigo-400 dark:text-indigo-200'
-                      : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-gray-300 hover:border-gray-400'
-                  }`}
-                >
-                  {isSelected && '✓ '}
-                  {m.name}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Done button to return to configured datasheet */}
-      <div className="pt-4">
-        <button
-          onClick={() => {
-            setSessionSubView('datasheet');
-            showNotification('Datasheet configured dynamically from your selected procedures.');
-          }}
-          className="w-full py-3.5 rounded-2xl bg-[#4F46E5] hover:bg-[#4338CA] text-white font-semibold text-sm shadow-warm flex items-center justify-center gap-2"
-        >
-          <Sliders className="w-4 h-4" />
-          <span>{isAr ? 'تطبيق والانتقال إلى ورقة البيانات' : 'Apply & Open Session Datasheet'}</span>
-        </button>
-      </div>
-    </div>
-  );
-
-  /* ---------------------------------------------------- */
-  /* SUBVIEW 2: SESSION DATASHEET (Exact PDF 1 Page 5)    */
-  /* ---------------------------------------------------- */
-  const renderDatasheetView = () => (
-    <div className="space-y-5 pb-28 animate-in fade-in">
-      {/* Header & Subview Navigator */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white mb-0.5">
-            {isAr ? 'ورقة بيانات الجلسة' : 'Session datasheet'}
-          </h2>
-          <p className="text-xs text-[#6B6785] dark:text-[#A5A0C2]">
-            {isAr
-              ? 'مبنية وفق اختياراتك من الإجراءات والقياسات.'
-              : 'Built from your chosen procedures and measures. Sample data shown.'}
-          </p>
-        </div>
-        <button
-          onClick={() => setSessionSubView('plan')}
-          className="px-3 py-1 rounded-xl bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-xs font-semibold text-[#4F46E5] hover:bg-[#F4EEE6] transition flex items-center gap-1 shadow-xs"
-        >
-          <Sliders className="w-3.5 h-3.5" />
-          <span>{isAr ? 'تعديل الإجراءات' : 'Plan'}</span>
-        </button>
-      </div>
-
-      {/* Sub-measure quick tabs */}
-      <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-1">
-        {[
-          { id: 'datasheet', label: 'DTT & MTS (Main)' },
-          { id: 'continuous', label: 'Continuous (Freq/Rate/Dur)' },
-          { id: 'interval', label: 'Interval & Sampling' },
-          { id: 'other_measures', label: 'Other (IOA / Integrity)' },
-        ].map((sub) => (
-          <button
-            key={sub.id}
-            onClick={() => setSessionSubView(sub.id as any)}
-            className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition ${
-              sessionSubView === sub.id
-                ? 'bg-[#4F46E5] text-white shadow-xs'
-                : 'bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785] dark:text-gray-300'
-            }`}
-          >
-            {sub.label}
-          </button>
-        ))}
-      </div>
-
-      {/* SECTION 1: Trial-by-trial · Discrete-trial training */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-4">
-        <div>
-          <span className="text-[11px] font-semibold text-[#4F46E5] dark:text-indigo-400 uppercase tracking-wider block mb-0.5">
-            Trial-by-trial · Discrete-trial training
-          </span>
-          <h3 className="font-heading font-bold text-base text-[#1F1B3A] dark:text-white">
-            Target: {behaviorTarget.name}
-          </h3>
-        </div>
-
-        {/* 1-10 Grid matching PDF 1 Page 5 */}
-        <div className="grid grid-cols-5 gap-2.5">
-          {trials.map((trial) => {
-            let bgClass = 'bg-[#FAF6F0] dark:bg-[#252044] border-[#E8E2D9] dark:border-[#38325E] text-gray-400';
-            let symbol = '…';
-            if (trial.res === '+') {
-              bgClass = 'bg-[#DDF5EA] dark:bg-emerald-950/60 border-emerald-400 text-[#1B9E6B] dark:text-emerald-300 font-bold';
-              symbol = '+';
-            } else if (trial.res === 'P') {
-              bgClass = 'bg-[#FFF1CC] dark:bg-amber-950/60 border-amber-400 text-[#B7791F] dark:text-amber-300 font-bold';
-              symbol = 'P';
-            } else if (trial.res === '-') {
-              bgClass = 'bg-[#FDE3E4] dark:bg-rose-950/60 border-rose-400 text-[#D63B3B] dark:text-rose-300 font-bold';
-              symbol = '−';
-            }
-
-            return (
-              <button
-                key={trial.num}
-                onClick={() => handleTrialClick(trial.num)}
-                className={`flex flex-col items-center justify-center p-2.5 rounded-2xl border-2 transition active:scale-95 ${bgClass}`}
-                title={`Trial ${trial.num}: Click to toggle result (+, P, -)`}
-              >
-                <span className="text-[11px] font-medium text-[#6B6785] dark:text-[#8E8AAB]">
-                  {trial.num}
-                </span>
-                <span className="text-lg font-bold leading-tight">{symbol}</span>
-              </button>
-            );
-          })}
-        </div>
-
-        <p className="text-center text-xs text-[#6B6785] dark:text-gray-400">
-          + independent · P prompted · − incorrect
-        </p>
-
-        {/* Prompt level for this trial (least to most) */}
-        <div>
-          <label className="text-xs font-semibold text-[#1F1B3A] dark:text-white block mb-2">
-            Prompt level for this trial (least to most)
-          </label>
-          <div className="grid grid-cols-3 gap-2">
-            {[
-              'Independent',
-              'Verbal',
-              'Gesture',
-              'Model',
-              'Partial physical',
-              'Full physical',
-            ].map((p) => {
-              const isSelected = currentPromptLevel === p;
-              return (
-                <button
-                  key={p}
-                  onClick={() => setCurrentPromptLevel(p as any)}
-                  className={`py-2 px-2.5 rounded-xl text-xs font-medium border text-center transition ${
-                    isSelected
-                      ? 'bg-[#E0E7FF] border-[#4F46E5] text-[#4F46E5] font-semibold dark:bg-indigo-950 dark:border-indigo-400 dark:text-indigo-200 shadow-xs'
-                      : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-gray-300'
-                  }`}
-                >
-                  {isSelected ? `✓ ${p}` : p}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Summary box matching PDF 1 Page 5 */}
-        <div className="p-3.5 rounded-2xl bg-[#FAF6F0] dark:bg-[#252044] border border-[#E8E2D9] dark:border-[#38325E]">
-          <h4 className="text-xs font-bold text-[#1F1B3A] dark:text-white mb-1">Summary</h4>
-          <p className="text-xs font-medium text-[#1F1B3A] dark:text-gray-200">
-            {independentTrials.length} of {scoredTrials.length} trials independent so far ({percentIndependent}%).
-          </p>
-          <p className="text-xs text-[#6B6785] dark:text-[#8E8AAB]">
-            Mastery criterion: 90% across 3 sessions.
-          </p>
-        </div>
-      </div>
-
-      {/* SECTION 2: Frequency counter (PDF 1 Page 5) */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-3">
-        <div>
-          <span className="text-[11px] font-semibold text-[#4F46E5] dark:text-indigo-400 uppercase tracking-wider block">
-            Frequency
-          </span>
-          <p className="text-xs text-[#6B6785] dark:text-gray-400">
-            [Operational definition: Out-of-seat behavior during table-top task]
-          </p>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="text-4xl font-bold font-heading text-[#1F1B3A] dark:text-white min-w-[50px] text-center">
-            {frequencyCount}
-          </div>
-
-          <button
-            onClick={() => {
-              setFrequencyHistory(prev => [...prev, frequencyCount + 1]);
-              setFrequencyCount(c => c + 1);
-            }}
-            className="flex-1 py-3 px-4 rounded-xl bg-[#1B9E6B] hover:bg-[#16855A] text-white font-bold text-base shadow-xs active:scale-95 transition flex items-center justify-center gap-1.5"
-          >
-            <Plus className="w-5 h-5" />
-            <span>+1</span>
-          </button>
-
-          <button
-            onClick={() => {
-              if (frequencyCount > 0) {
-                setFrequencyCount(c => c - 1);
-              }
-            }}
-            className="py-3 px-4 rounded-xl border border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785] hover:bg-gray-100 dark:hover:bg-gray-800 text-xs font-semibold active:scale-95 transition"
-          >
-            Undo
-          </button>
-        </div>
-      </div>
-
-      {/* SECTION 3: Momentary time sampling · every 30 seconds (PDF 1 Page 5) */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-3">
-        <div>
-          <span className="text-[11px] font-semibold text-[#4F46E5] dark:text-indigo-400 uppercase tracking-wider block">
-            Momentary time sampling · every 30 seconds
-          </span>
-          <p className="text-xs text-[#6B6785] dark:text-gray-400">
-            Yes = behavior occurring at the moment the interval ends
-          </p>
-        </div>
-
-        {/* 1-10 MTS grid */}
-        <div className="grid grid-cols-5 gap-2">
-          {mtsIntervals.map((inv) => (
-            <button
-              key={inv.num}
-              onClick={() => {
-                setMtsIntervals(prev => prev.map(item => {
-                  if (item.num === inv.num) {
-                    const next = item.state === null ? 'Yes' : item.state === 'Yes' ? 'No' : null;
-                    return { ...item, state: next };
-                  }
-                  return item;
-                }));
-              }}
-              className={`flex flex-col items-center justify-center p-2 rounded-xl border transition ${
-                inv.state === 'Yes'
-                  ? 'bg-emerald-100 dark:bg-emerald-950/60 border-emerald-400 text-emerald-800 dark:text-emerald-300 font-bold'
-                  : inv.state === 'No'
-                  ? 'bg-gray-100 dark:bg-gray-800 border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400'
-                  : 'bg-[#FAF6F0] dark:bg-[#252044] border-[#E8E2D9] dark:border-[#38325E] text-gray-400'
-              }`}
-            >
-              <span className="text-[10px] text-[#6B6785]">{inv.num}</span>
-              <span className="text-xs font-semibold">{inv.state || '—'}</span>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* SECTION 4: Second observer (IOA) Toggle (PDF 1 Page 5) */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-2xl p-4 flex items-center justify-between shadow-card">
-        <div>
-          <span className="text-xs font-semibold text-[#1F1B3A] dark:text-white block">
-            Second observer (IOA)
-          </span>
-          <span className="text-[11px] text-[#6B6785] dark:text-gray-400">
-            Calculates interobserver agreement during live trial
-          </span>
-        </div>
-        <button
-          onClick={() => {
-            setIoaEnabled(!ioaEnabled);
-            showNotification(ioaEnabled ? 'IOA second observer mode disabled' : 'IOA enabled: Dual observer score matching active');
-          }}
-          className={`px-3 py-1.5 rounded-full text-xs font-semibold transition ${
-            ioaEnabled
-              ? 'bg-[#1B9E6B] text-white shadow-xs'
-              : 'bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
-          }`}
-        >
-          {ioaEnabled ? 'On (89%)' : 'Off'}
-        </button>
-      </div>
-
-      {/* Save Session CTA Button */}
-      <button
-        onClick={handleSaveSession}
-        className="w-full py-4 rounded-2xl bg-[#1B9E6B] hover:bg-[#147952] text-white font-heading font-semibold text-base shadow-warm flex items-center justify-center gap-2 active:scale-98 transition"
-      >
-        <Save className="w-5 h-5" />
-        <span>Save session</span>
-      </button>
-    </div>
-  );
-
-  /* ---------------------------------------------------- */
-  /* SUBVIEW 3: CONTINUOUS MEASURES (Exact PDF 1 Page 6)  */
-  /* ---------------------------------------------------- */
-  const renderContinuousView = () => (
-    <div className="space-y-4 pb-28 animate-in fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white">
-            Continuous measures
-          </h2>
-          <p className="text-xs text-[#6B6785]">Sample data shown.</p>
-        </div>
-        <button
-          onClick={() => setSessionSubView('datasheet')}
-          className="text-xs font-semibold text-[#4F46E5] hover:underline"
-        >
-          ← Back to Datasheet
-        </button>
-      </div>
-
-      {/* Frequency (count) */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Frequency (count)</h3>
-        <p className="text-xs text-[#6B6785]">Count each time the behavior occurs</p>
-        <div className="flex items-center justify-between pt-1">
-          <div>
-            <span className="text-3xl font-bold text-[#1F1B3A] dark:text-white mr-2">{frequencyCount}</span>
-            <span className="text-xs text-[#6B6785]">occurrences</span>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setFrequencyCount(c => c + 1)}
-              className="px-4 py-2 bg-[#1B9E6B] text-white rounded-xl text-xs font-bold"
-            >
-              +1
-            </button>
-            <button
-              onClick={() => frequencyCount > 0 && setFrequencyCount(c => c - 1)}
-              className="px-3 py-2 border border-[#E8E2D9] dark:border-gray-700 text-xs font-semibold rounded-xl"
-            >
-              Undo
-            </button>
-          </div>
-        </div>
-        <p className="text-[11px] text-[#6B6785] pt-1">Session length: 30 min</p>
-      </div>
-
-      {/* Rate */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Rate</h3>
-        <p className="text-xs text-[#6B6785]">Count divided by observation time</p>
-        <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-bold text-[#1F1B3A] dark:text-white">
-            {(rateResponses / (rateElapsedSec / 60)).toFixed(2)}
-          </span>
-          <span className="text-xs text-[#6B6785]">per minute</span>
-        </div>
-        <div className="flex justify-between text-xs text-[#6B6785] pt-1 border-t border-[#E8E2D9] dark:border-gray-800">
-          <span>Responses: {rateResponses}</span>
-          <span>Observation time: {Math.floor(rateElapsedSec / 60)}:{(rateElapsedSec % 60).toString().padStart(2, '0')} min</span>
-        </div>
-        <div className="flex gap-2 pt-2">
-          <button
-            onClick={() => setRateResponses(r => r + 1)}
-            className="flex-1 py-2 bg-[#1B9E6B] text-white rounded-xl text-xs font-bold"
-          >
-            +1 Response
-          </button>
-          <button
-            onClick={() => setRateTimerRunning(!rateTimerRunning)}
-            className="flex-1 py-2 border border-[#E8E2D9] dark:border-gray-700 text-xs font-semibold rounded-xl"
-          >
-            {rateTimerRunning ? 'Pause' : 'Resume'}
-          </button>
-        </div>
-      </div>
-
-      {/* Duration */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Duration</h3>
-        <p className="text-xs text-[#6B6785]">Time from start to end of each episode</p>
-        <div className="text-3xl font-bold font-mono text-[#1F1B3A] dark:text-white">
-          {Math.floor(durationSeconds / 60).toString().padStart(2, '0')}:{(durationSeconds % 60).toString().padStart(2, '0')}
-          <span className="text-xs font-normal text-[#6B6785] font-sans ml-2">current episode</span>
-        </div>
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={() => setDurationTimerRunning(true)}
-            className="flex-1 py-2 bg-[#1B9E6B] text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1"
-          >
-            <Play className="w-3.5 h-3.5 fill-current" />
-            <span>Start</span>
-          </button>
-          <button
-            onClick={() => {
-              setDurationTimerRunning(false);
-              const min = Math.floor(durationSeconds / 60);
-              const sec = (durationSeconds % 60).toString().padStart(2, '0');
-              setDurationEpisodes(prev => [...prev, { id: prev.length + 1, time: `${min}:${sec}` }]);
-            }}
-            className="flex-1 py-2 border border-[#E8E2D9] dark:border-gray-700 text-xs font-semibold rounded-xl flex items-center justify-center gap-1"
-          >
-            <Pause className="w-3.5 h-3.5" />
-            <span>Stop</span>
-          </button>
-        </div>
-        <div className="space-y-1 pt-2 text-xs text-[#6B6785] border-t border-[#E8E2D9] dark:border-gray-800">
-          {durationEpisodes.map(ep => (
-            <div key={ep.id} className="flex justify-between">
-              <span>Episode {ep.id}</span>
-              <span className="font-mono">{ep.time}</span>
-            </div>
-          ))}
-          <div className="flex justify-between font-semibold text-[#1F1B3A] dark:text-white pt-1">
-            <span>Total • Mean</span>
-            <span>3:19 • 1:40</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Latency */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Latency</h3>
-        <p className="text-xs text-[#6B6785]">Time from the instruction to the response</p>
-        <div className="flex gap-2 pt-1">
-          <button
-            onClick={() => showNotification('Instruction timer started')}
-            className="flex-1 py-2 bg-[#1B9E6B] text-white rounded-xl text-xs font-bold"
-          >
-            Instruction given
-          </button>
-          <button
-            onClick={() => showNotification('Response recorded at 4.2s')}
-            className="flex-1 py-2 border border-[#E8E2D9] dark:border-gray-700 text-xs font-semibold rounded-xl"
-          >
-            Response
-          </button>
-        </div>
-        <div className="space-y-1 text-xs text-[#6B6785] pt-2">
-          {latencyTrials.map((sec, idx) => (
-            <div key={idx} className="flex justify-between">
-              <span>Trial {idx + 1}</span>
-              <span>{sec} s</span>
-            </div>
-          ))}
-          <div className="flex justify-between font-semibold text-[#1F1B3A] dark:text-white pt-1 border-t border-[#E8E2D9] dark:border-gray-800">
-            <span>Mean</span>
-            <span>4.7 s</span>
-          </div>
-        </div>
-      </div>
-
-      {/* IRT (Interresponse time) */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Interresponse time (IRT)</h3>
-        <p className="text-xs text-[#6B6785]">Time between one response and the next</p>
-        <button
-          onClick={() => {
-            const last = irtResponses[irtResponses.length - 1];
-            const nextTime = Math.floor(Math.random() * 8) + 8;
-            setIrtResponses(prev => [...prev, { num: (last?.num || 1) + 1, time: nextTime }]);
-          }}
-          className="w-full py-2 bg-[#1B9E6B] text-white rounded-xl text-xs font-bold"
-        >
-          Response occurred
-        </button>
-        <div className="space-y-1 text-xs text-[#6B6785] pt-2">
-          {irtResponses.map(r => (
-            <div key={r.num} className="flex justify-between">
-              <span>Response {r.num}</span>
-              <span>{r.time} s after #{r.num - 1}</span>
-            </div>
-          ))}
-          <div className="flex justify-between font-semibold text-[#1F1B3A] dark:text-white pt-1 border-t border-[#E8E2D9] dark:border-gray-800">
-            <span>Mean IRT</span>
-            <span>11.7 s</span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  /* ---------------------------------------------------- */
-  /* SUBVIEW 4: INTERVAL & SAMPLING (Exact PDF 1 Page 7) */
-  /* ---------------------------------------------------- */
-  const renderIntervalView = () => (
-    <div className="space-y-4 pb-28 animate-in fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white">
-            Interval and sampling
-          </h2>
-          <p className="text-xs text-[#6B6785]">Sample data shown.</p>
-        </div>
-        <button
-          onClick={() => setSessionSubView('datasheet')}
-          className="text-xs font-semibold text-[#4F46E5] hover:underline"
-        >
-          ← Back to Datasheet
-        </button>
-      </div>
-
-      {/* Partial-interval recording */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Partial-interval recording</h3>
-        <p className="text-xs text-[#6B6785]">
-          Yes if the behavior occurs at any time in the 10-second interval
-        </p>
-        <div className="grid grid-cols-5 gap-2 pt-2">
-          {partialIntervals.map((occ, idx) => (
-            <button
-              key={idx}
-              onClick={() => {
-                setPartialIntervals(prev => {
-                  const arr = [...prev];
-                  arr[idx] = !arr[idx];
-                  return arr;
-                });
-              }}
-              className={`p-2 rounded-xl text-center border transition ${
-                occ
-                  ? 'bg-emerald-100 dark:bg-emerald-950 border-emerald-400 text-emerald-800 dark:text-emerald-300 font-bold'
-                  : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-gray-700 text-gray-500'
-              }`}
-            >
-              <div className="text-[10px] text-[#6B6785]">{idx + 1}</div>
-              <div className="text-xs font-semibold">{occ ? 'Yes' : 'No'}</div>
-            </button>
-          ))}
-        </div>
-        <p className="text-xs font-semibold text-[#1F1B3A] dark:text-white pt-2 border-t border-[#E8E2D9] dark:border-gray-800">
-          Intervals with behavior: {partialIntervals.filter(Boolean).length} of 10 ({partialIntervals.filter(Boolean).length * 10}%)
-        </p>
-      </div>
-
-      {/* Whole-interval recording */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Whole-interval recording</h3>
-        <p className="text-xs text-[#6B6785]">
-          Yes only if the behavior lasts the whole 10-second interval
-        </p>
-        <div className="grid grid-cols-5 gap-2 pt-2">
-          {wholeIntervals.map((occ, idx) => (
-            <button
-              key={idx}
-              onClick={() => {
-                setWholeIntervals(prev => {
-                  const arr = [...prev];
-                  arr[idx] = !arr[idx];
-                  return arr;
-                });
-              }}
-              className={`p-2 rounded-xl text-center border transition ${
-                occ
-                  ? 'bg-emerald-100 dark:bg-emerald-950 border-emerald-400 text-emerald-800 dark:text-emerald-300 font-bold'
-                  : 'bg-white dark:bg-[#1F1B3A] border-[#E8E2D9] dark:border-gray-700 text-gray-500'
-              }`}
-            >
-              <div className="text-[10px] text-[#6B6785]">{idx + 1}</div>
-              <div className="text-xs font-semibold">{occ ? 'Yes' : 'No'}</div>
-            </button>
-          ))}
-        </div>
-        <p className="text-xs font-semibold text-[#1F1B3A] dark:text-white pt-2 border-t border-[#E8E2D9] dark:border-gray-800">
-          Intervals with behavior: {wholeIntervals.filter(Boolean).length} of 10 ({wholeIntervals.filter(Boolean).length * 10}%)
-        </p>
-      </div>
-    </div>
-  );
-
-  /* ---------------------------------------------------- */
-  /* SUBVIEW 5: OTHER MEASURES (Exact PDF 1 Page 8 & 9)   */
-  /* ---------------------------------------------------- */
-  const renderOtherMeasuresView = () => (
-    <div className="space-y-4 pb-28 animate-in fade-in">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white">
-            Other clinical measures
-          </h2>
-          <p className="text-xs text-[#6B6785]">Sample data shown.</p>
-        </div>
-        <button
-          onClick={() => setSessionSubView('datasheet')}
-          className="text-xs font-semibold text-[#4F46E5] hover:underline"
-        >
-          ← Back to Datasheet
-        </button>
-      </div>
-
-      {/* Permanent product recording */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Permanent product recording</h3>
-        <p className="text-xs text-[#6B6785]">Score what the behavior leaves behind</p>
-        <div className="space-y-1 text-xs pt-1">
-          <div className="flex justify-between"><span>Worksheet 1</span><span className="font-semibold">8 of 10 correct</span></div>
-          <div className="flex justify-between"><span>Worksheet 2</span><span className="font-semibold">9 of 10 correct</span></div>
-        </div>
-        <button
-          onClick={() => showNotification('Worksheet photo captured and stored securely')}
-          className="w-full py-2.5 rounded-xl border border-[#E8E2D9] dark:border-gray-700 text-xs font-semibold flex items-center justify-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800"
-        >
-          <Camera className="w-4 h-4 text-indigo-500" />
-          <span>Attach photo</span>
-        </button>
-      </div>
-
-      {/* IOA Calculator */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-2">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Interobserver agreement (IOA)</h3>
-        <p className="text-xs text-[#6B6785]">Two observers record independently</p>
-        <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-          <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-            <span className="text-[#6B6785] block">Observer 1</span>
-            <span className="text-base font-bold">8</span>
-          </div>
-          <div className="p-2.5 rounded-xl bg-gray-50 dark:bg-gray-800">
-            <span className="text-[#6B6785] block">Observer 2</span>
-            <span className="text-base font-bold">9</span>
-          </div>
-        </div>
-        <div className="flex justify-between text-xs text-[#6B6785] pt-1">
-          <span>Method</span>
-          <span className="font-medium text-[#1F1B3A] dark:text-white">Total count</span>
-        </div>
-        <div className="flex justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400 pt-1 border-t border-[#E8E2D9] dark:border-gray-800">
-          <span>Agreement formula</span>
-          <span>8 ÷ 9 × 100 = 89%</span>
-        </div>
-      </div>
-
-      {/* Treatment integrity measurement */}
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-3">
-        <h3 className="font-heading font-bold text-sm text-[#1F1B3A] dark:text-white">Treatment integrity measurement</h3>
-        <p className="text-xs text-[#6B6785]">Check the procedure was delivered as written</p>
-        <div className="space-y-2 text-xs">
-          <div className="flex justify-between items-center">
-            <span>Give the instruction</span>
-            <span className="text-emerald-600 font-semibold bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full">✓ Done</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span>Wait 3 seconds</span>
-            <span className="text-emerald-600 font-semibold bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full">✓ Done</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span>Use the correct prompt</span>
-            <span className="text-rose-600 font-semibold bg-rose-50 dark:bg-rose-950 px-2 py-0.5 rounded-full">✗ Missed</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <span>Deliver reinforcement</span>
-            <span className="text-emerald-600 font-semibold bg-emerald-50 dark:bg-emerald-950 px-2 py-0.5 rounded-full">✓ Done</span>
-          </div>
-        </div>
-        <p className="text-xs font-semibold text-[#1F1B3A] dark:text-white pt-2 border-t border-[#E8E2D9] dark:border-gray-800">
-          3 of 4 steps correct (75%)
-        </p>
-      </div>
-    </div>
-  );
-
-  /* ---------------------------------------------------- */
-  /* TAB 2: TARGETS (Library, operational defs, rules)    */
+  /* TAB 2: TARGETS (Library, operational defs, history)  */
   /* ---------------------------------------------------- */
   const renderTargetsTab = () => (
-    <div className="space-y-4 pb-28 animate-in fade-in">
-      <div>
-        <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white">
-          Active targets
-        </h2>
-        <p className="text-xs text-[#6B6785]">
-          Operational definitions, materials, prompt fading steps and decision engine
-        </p>
-      </div>
-
-      {targets.filter(t => t.childId === activeChild.id).map((target) => (
-        <div
-          key={target.id}
-          className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-3"
-        >
-          <div className="flex items-start justify-between">
-            <div>
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#4F46E5] bg-indigo-50 dark:bg-indigo-950 px-2 py-0.5 rounded-full">
-                {target.domain}
-              </span>
-              <h3 className="font-heading font-bold text-base text-[#1F1B3A] dark:text-white mt-1">
-                {target.name}
-              </h3>
-            </div>
-            <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 capitalize">
-              {target.status}
-            </span>
-          </div>
-
-          <div>
-            <h4 className="text-xs font-bold text-[#1F1B3A] dark:text-white mb-1">Operational Definition</h4>
-            <p className="text-xs text-[#6B6785] dark:text-gray-300 leading-relaxed">
-              {target.operationalDefinition}
-            </p>
-          </div>
-
-          <div>
-            <h4 className="text-xs font-bold text-[#1F1B3A] dark:text-white mb-1">Materials</h4>
-            <ul className="text-xs text-[#6B6785] dark:text-gray-300 list-disc list-inside space-y-0.5">
-              {target.materials.map((m, i) => (
-                <li key={i}>{m}</li>
-              ))}
-            </ul>
-          </div>
-
-          {/* Signature Decision Support Card (Client requirement) */}
-          <div className="p-3.5 rounded-2xl bg-[#FAF6F0] dark:bg-[#252044] border-l-4 border-l-[#4F46E5] border border-[#E8E2D9] dark:border-[#38325E] space-y-1">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-[#4F46E5] dark:text-indigo-400">
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>Decision Support Engine</span>
-            </div>
-            <p className="text-xs font-medium text-[#1F1B3A] dark:text-white">
-              Performance: {target.currentPerformance}% independent. Mastery criterion: {target.masteryCriterion}.
-            </p>
-            <p className="text-xs text-[#10B981] font-semibold">
-              Suggested action: {target.suggestedAction}
-            </p>
-            <p className="text-xs text-[#6B6785] dark:text-gray-400">
-              Suggested next step: {target.suggestedNextStep}
-            </p>
-          </div>
-        </div>
-      ))}
-    </div>
+    <TargetsPanel
+      isAr={isAr}
+      targets={targets.filter(t => t.childId === activeChild.id && t.discipline === 'behavior')}
+      sessions={savedSessions.filter(x => x.role === 'behavior' && x.childId === activeChild.id)}
+      title={{ en: 'Active targets', ar: 'الأهداف العلاجية النشطة' }}
+      subtitle={{ en: 'Operational definitions, lesson steps, and saved session history', ar: 'التعريفات الإجرائية وخطوات الدرس وسجل الجلسات المحفوظة' }}
+      addLabel={{ en: 'Add target', ar: 'هدف جديد' }}
+      noun={{ en: 'target', ar: 'هدف' }}
+      onAdd={() => setEditingTarget(null)}
+      onEdit={t => setEditingTarget(t)}
+      onReport={() => setShowReportModal(true)}
+    />
   );
 
-  /* ---------------------------------------------------- */
-  /* TAB 3: GRAPHS (Live line/bar chart with phase line)  */
-  /* ---------------------------------------------------- */
   const renderGraphsTab = () => (
-    <div className="space-y-4 pb-28 animate-in fade-in">
-      <div>
-        <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white">
-          Clinical graphs
-        </h2>
-        <p className="text-xs text-[#6B6785]">
-          Trial-by-trial accuracy, criterion reference line, and phase changes
-        </p>
-      </div>
-
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-heading font-semibold text-sm text-[#1F1B3A] dark:text-white">
-            Identifying Common Objects (% Independent)
-          </h3>
-          <span className="text-xs font-bold text-[#4F46E5]">Criterion: 90%</span>
-        </div>
-
-        {/* SVG Graph */}
-        <div className="h-48 w-full relative pt-2">
-          <svg className="w-full h-full overflow-visible" viewBox="0 0 320 160">
-            {/* Grid lines */}
-            <line x1="30" y1="20" x2="310" y2="20" stroke="#E8E2D9" strokeDasharray="3 3" />
-            <line x1="30" y1="60" x2="310" y2="60" stroke="#E8E2D9" strokeDasharray="3 3" />
-            <line x1="30" y1="100" x2="310" y2="100" stroke="#E8E2D9" strokeDasharray="3 3" />
-            <line x1="30" y1="140" x2="310" y2="140" stroke="#1F1B3A" strokeWidth="1.5" />
-            <line x1="30" y1="10" x2="30" y2="140" stroke="#1F1B3A" strokeWidth="1.5" />
-
-            {/* Y axis labels */}
-            <text x="5" y="24" fontSize="9" fill="#6B6785">100%</text>
-            <text x="12" y="64" fontSize="9" fill="#6B6785">75%</text>
-            <text x="12" y="104" fontSize="9" fill="#6B6785">50%</text>
-            <text x="18" y="144" fontSize="9" fill="#6B6785">0%</text>
-
-            {/* Coral Criterion Line (90%) */}
-            <line x1="30" y1="36" x2="310" y2="36" stroke="#FF6B57" strokeWidth="2" strokeDasharray="4 4" />
-            <text x="240" y="32" fontSize="9" fill="#FF6B57" fontWeight="bold">Criterion (90%)</text>
-
-            {/* Phase change line (Baseline -> Intervention) */}
-            <line x1="100" y1="10" x2="100" y2="140" stroke="#6B6785" strokeWidth="1.5" strokeDasharray="2 2" />
-            <text x="50" y="16" fontSize="9" fill="#6B6785" textAnchor="middle">Baseline</text>
-            <text x="180" y="16" fontSize="9" fill="#4F46E5" fontWeight="bold" textAnchor="middle">DTT + Fading</text>
-
-            {/* Data line */}
-            <polyline
-              fill="none"
-              stroke="#4F46E5"
-              strokeWidth="2.5"
-              points="45,120 75,115 110,85 145,65 180,60 215,55 250,50 285,42"
-            />
-
-            {/* Data points */}
-            {[
-              { x: 45, y: 120, label: '35%' },
-              { x: 75, y: 115, label: '40%' },
-              { x: 110, y: 85, label: '60%' },
-              { x: 145, y: 65, label: '75%' },
-              { x: 180, y: 60, label: '78%' },
-              { x: 215, y: 55, label: '82%' },
-              { x: 250, y: 50, label: '85%' },
-              { x: 285, y: 42, label: '88%' },
-            ].map((pt, i) => (
-              <circle
-                key={i}
-                cx={pt.x}
-                cy={pt.y}
-                r="4.5"
-                fill="#4F46E5"
-                stroke="#FFFFFF"
-                strokeWidth="2"
-              />
-            ))}
-          </svg>
-        </div>
-
-        <div className="flex items-center justify-between text-xs text-[#6B6785] pt-2 border-t border-[#E8E2D9] dark:border-gray-800">
-          <span>8 consecutive clinical sessions</span>
-          <span className="font-semibold text-emerald-600">Upward Trend (+53%)</span>
-        </div>
-      </div>
-    </div>
+    <BehaviorGraphs
+      isAr={isAr}
+      targets={targets.filter(t => t.childId === activeChild.id && t.discipline === 'behavior')}
+      sessions={savedSessions.filter(x => x.role === 'behavior' && x.childId === activeChild.id)}
+      onReport={() => setShowReportModal(true)}
+    />
   );
 
+  const handleAutoDraftSoap = () => {
+    setIsAutoDrafting(true);
+    setTimeout(() => {
+      setSoapSubjective(
+        `${activeChild.name} arrived alert, well-regulated and cooperative. Maintained focused engagement and demonstrated calm demeanor during task demands.`
+      );
+      const parts: string[] = [];
+      if (ds.isTrialGridActive(plan) && ds.scoredCount) {
+        parts.push(`${behaviorTarget.name}: ${ds.percentIndependent}% independent (${ds.independentCount}/${ds.scoredCount} trials). Prompt level: ${ds.s.promptLevel}.`);
+      }
+      if (selectedMeasures.includes('latency') && ds.s.latencies.length) parts.push(`Response latency: ${ds.latencyMean.toFixed(1)}s avg.`);
+      if (selectedMeasures.includes('irt') && ds.s.irts.length) parts.push(`Mean IRT: ${ds.irtMean.toFixed(1)}s.`);
+      if (selectedMeasures.includes('frequency')) parts.push(`Frequency: ${ds.s.frequency}.`);
+      if (selectedMeasures.includes('rate') && ds.s.rateSeconds > 0) parts.push(`Rate: ${ds.ratePerMinute.toFixed(1)} resp/min.`);
+      if (selectedMeasures.includes('duration') && ds.s.durationEpisodes.length) parts.push(`Mean duration: ${Math.round(ds.durationMean)}s over ${ds.s.durationEpisodes.length} episodes.`);
+      if (selectedMeasures.includes('partial_interval')) parts.push(`Partial-interval: ${ds.partialYes}/${ds.s.partial.length}.`);
+      if (selectedMeasures.includes('whole_interval')) parts.push(`Whole-interval: ${ds.wholeYes}/${ds.s.whole.length}.`);
+      if (selectedMeasures.includes('mts') && ds.mtsScored) parts.push(`MTS: ${ds.mtsYes}/${ds.mtsScored} samples.`);
+      if (selectedMeasures.includes('percentage') && ds.pctTotal) parts.push(`Percentage correct: ${ds.percentage}% (${ds.s.pctCorrect}/${ds.pctTotal}).`);
+      if (selectedMeasures.includes('cold_probe') && ds.coldScored) parts.push(`Cold probe: ${ds.coldCorrect}/${ds.coldScored}.`);
+      if (selectedMeasures.includes('accuracy') && ds.accuracyTotal) parts.push(`Accuracy: ${ds.accuracyPercent}%.`);
+      if ((ds.s.ioaOn || selectedMeasures.includes('ioa')) && ds.ioaPercent !== null) parts.push(`IOA agreement: ${ds.ioaPercent}%.`);
+      if (selectedMeasures.includes('treatment_integrity') && ds.integrityPercent !== null) parts.push(`Treatment integrity: ${ds.integrityPercent}%.`);
+      setSoapObjective(parts.length ? parts.join(' ') : 'No datasheet measures recorded yet for this session.');
+      setSoapAssessment(
+        `Robust receptive acquisition observed on object-location tasks. ${activeChild.name} demonstrated steady progress in spatial preposition discernment (in, on, under) with fading gestural prompts on VR-3 reinforcement schedule.`
+      );
+      setSoapPlan(
+        'Advance object-location targets to 3-step spatial placements in natural therapy and classroom settings. Fade gestural prompting to 4-second latency delay. Train caregivers on Differential Reinforcement of Alternative behavior (DRA) for home carryover.'
+      );
+      setIsAutoDrafting(false);
+      showNotification(isAr ? 'تم إنشاء المسودة الإكلينيكية تلقائياً من بيانات الجلسة السلوكية' : 'Clinical SOAP notes auto-synthesized from latest behavior & object-location metrics!');
+    }, 400);
+  };
+
+  const handleSaveSoapNote = () => {
+    saveSession(buildSessionPayload(`[SOAP NOTE]\nS: ${soapSubjective}\nO: ${soapObjective}\nA: ${soapAssessment}\nP: ${soapPlan}`));
+
+    triggerConfetti();
+    showNotification(
+      isAr 
+        ? 'تم حفظ واعتماد ملاحظات SOAP السلوكية الإكلينيكية الرسمية في سجل الطفل' 
+        : 'Official Clinical SOAP Note successfully saved and timestamped to child record.'
+    );
+  };
+
   /* ---------------------------------------------------- */
-  /* TAB 4: NOTES (Voice-to-text, incident, reports)      */
+  /* TAB 4: NOTES (Session SOAP Notes with Dedicated Mics)*/
   /* ---------------------------------------------------- */
   const renderNotesTab = () => (
     <div className="space-y-4 pb-28 animate-in fade-in">
-      <div>
-        <h2 className="font-heading text-2xl font-bold text-[#1F1B3A] dark:text-white">
-          Session notes
-        </h2>
-        <p className="text-xs text-[#6B6785]">
-          Voice-to-text transcription, AI draft approval and supervisor co-signing
-        </p>
-      </div>
+      {/* Reusable Clinical SOAP Note Card with Dedicated Mics on S, O, A, P */}
+      <SoapNoteCard
+        role="behavior"
+        childName={activeChild.name}
+        language={language as 'en' | 'ar'}
+        soapSubjective={soapSubjective}
+        setSoapSubjective={setSoapSubjective}
+        soapObjective={soapObjective}
+        setSoapObjective={setSoapObjective}
+        soapAssessment={soapAssessment}
+        setSoapAssessment={setSoapAssessment}
+        soapPlan={soapPlan}
+        setSoapPlan={setSoapPlan}
+        onAutoDraft={handleAutoDraftSoap}
+        isAutoDrafting={isAutoDrafting}
+        onSaveNote={handleSaveSoapNote}
+      />
 
-      <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-[20px] p-5 shadow-card space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold text-[#1F1B3A] dark:text-white">Clinical Session Narrative</span>
-          <button
-            onClick={() => {
-              setIsRecordingAudio(!isRecordingAudio);
-              if (!isRecordingAudio) {
-                showNotification('Listening to speech... speak your clinical notes.');
-              }
-            }}
-            className={`p-2 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition ${
-              isRecordingAudio
-                ? 'bg-rose-100 text-rose-600 animate-pulse'
-                : 'bg-indigo-50 text-[#4F46E5] hover:bg-indigo-100'
-            }`}
+      {/* Action Bar for Clinical Export */}
+      <div className="flex items-center pt-1">
+        <button
+          onClick={() => setShowReportModal(true)}
+          className="px-3.5 py-2 rounded-xl bg-white dark:bg-[#1F1B3A] border border-[#0F766E] text-xs font-semibold text-[#0F766E] hover:bg-teal-50 dark:hover:bg-teal-950/40 transition flex items-center gap-1.5 shadow-xs"
+        >
+          <Share2 className="w-3.5 h-3.5" />
+          <span>{isAr ? 'تصدير التقرير الرسمي' : 'Export Official Clinical Report'}</span>
+        </button>
+
+      </div>
+      <SoapArchive
+        sessions={savedSessions.filter(s => s.role === 'behavior' && s.childId === activeChild.id)}
+        childName={activeChild.name}
+        language={language as 'en' | 'ar'}
+        title={isAr ? 'أرشيف جلسات السلوك المعتمدة' : 'Official Behavior SOAP Notes Archive'}
+        credential="Certified BCBA"
+      />
+    </div>
+  );
+
+  /* ---------------------------------------------------- */
+  /* CLINICAL REPORT & SHARE MODAL                        */
+  /* ---------------------------------------------------- */
+  const renderReportModal = () => (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in">
+      <div className="bg-white dark:bg-[#1F1B3A] rounded-3xl max-w-lg w-full max-h-[90vh] overflow-y-auto shadow-float border border-[#E8E2D9] dark:border-[#38325E] p-6 space-y-5">
+        {/* Modal Header */}
+        <div className="flex items-start justify-between border-b border-gray-100 dark:border-gray-800 pb-3">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#0F766E] dark:text-teal-300 bg-teal-50 dark:bg-teal-950 px-2.5 py-0.5 rounded-full border border-teal-200">
+              {isAr ? 'تقرير إكلينيكي رسمي' : 'Official Clinical Session Report'}
+            </span>
+            <h3 className="font-heading font-bold text-lg text-[#1F1B3A] dark:text-white mt-1">
+              Nexia Bridge · Behavior Intervention Report
+            </h3>
+          </div>
+          <button 
+            onClick={() => setShowReportModal(false)}
+            className="p-1 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition"
           >
-            <Mic className="w-3.5 h-3.5" />
-            <span>{isRecordingAudio ? 'Recording...' : 'Dictate'}</span>
+            <X className="w-5 h-5" />
           </button>
         </div>
 
-        <textarea
-          value={sessionNotes}
-          onChange={(e) => setSessionNotes(e.target.value)}
-          rows={5}
-          className="w-full text-xs p-3 rounded-xl border border-[#E8E2D9] dark:border-[#38325E] bg-[#FAF6F0] dark:bg-[#252044] text-[#1F1B3A] dark:text-white outline-hidden resize-none leading-relaxed"
-        />
-
-        <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-1.5 text-xs text-[#6B6785]">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
-            <span>HIPAA / PDPL Compliant</span>
+        {/* Child & Therapist Details */}
+        <div className="grid grid-cols-2 gap-3 text-xs p-3.5 bg-[#FAF6F0] dark:bg-[#252044] rounded-2xl border border-[#E8E2D9] dark:border-[#38325E]">
+          <div>
+            <span className="text-[#6B6785] block">{isAr ? 'الطفل:' : 'Child:'}</span>
+            <span className="font-bold text-[#1F1B3A] dark:text-white">{activeChild.name} ({activeChild.age} yrs)</span>
+            <span className="text-[10px] text-[#6B6785] block">{activeChild.diagnosis}</span>
           </div>
-          <button
-            onClick={() => showNotification('Session note signed and added to child medical chart.')}
-            className="px-4 py-2 rounded-xl bg-[#4F46E5] text-white text-xs font-semibold shadow-xs"
-          >
-            Save & Sign Note
-          </button>
+          <div>
+            <span className="text-[#6B6785] block">{isAr ? 'الأخصائي المعالج:' : 'Therapist (BCBA):'}</span>
+            <span className="font-bold text-[#1F1B3A] dark:text-white">Dr. Tareq Hassan</span>
+            <span className="text-[10px] text-[#0F766E] font-medium block">Board Certified Behavior Analyst</span>
+          </div>
+        </div>
+
+        {/* Acquisition Target & Performance Summary */}
+        <div className="space-y-2">
+          <h4 className="text-xs font-bold text-[#1F1B3A] dark:text-white uppercase tracking-wider">
+            {isAr ? 'أداء الهدف الإكلينيكي المكتسب' : 'Acquisition Target & Performance'}
+          </h4>
+          <div className="p-4 rounded-2xl border border-teal-200 dark:border-teal-800 bg-[#F0FAF7] dark:bg-[#1C2C28] flex items-center justify-between">
+            <div>
+              <span className="font-bold text-sm text-[#1F1B3A] dark:text-white block">{behaviorTarget.name}</span>
+              <span className="text-xs text-[#5C706C] dark:text-gray-300">
+                {ds.independentCount}/{ds.scoredCount} {isAr ? 'محاولات مستقلة' : 'trials independent'} · {currentPromptLevel} {isAr ? 'مستوى التلقين' : 'prompt level'}
+              </span>
+            </div>
+            <div className="text-right">
+              <span className="text-2xl font-bold text-[#0F766E] dark:text-teal-300 block">{percentIndependent}%</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${percentIndependent >= 90 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
+                {percentIndependent >= 90 ? 'Mastery Met' : 'In Progress'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Behavioral Metrics Grid */}
+        <div className="grid grid-cols-3 gap-2.5 text-center">
+          <div className="p-3 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+            <span className="text-[10px] text-[#6B6785] block">{isAr ? 'التكرار (العدد)' : 'Frequency'}</span>
+            <span className="text-lg font-bold text-[#1F1B3A] dark:text-white">{frequencyCount}</span>
+          </div>
+          <div className="p-3 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+            <span className="text-[10px] text-[#6B6785] block">{isAr ? 'المعدل/دقيقة' : 'Rate/min'}</span>
+            <span className="text-lg font-bold text-[#1F1B3A] dark:text-white">
+              {ds.ratePerMinute.toFixed(1)}
+            </span>
+          </div>
+          <div className="p-3 rounded-2xl bg-gray-50 dark:bg-gray-800 border border-gray-100 dark:border-gray-700">
+            <span className="text-[10px] text-[#6B6785] block">{isAr ? 'اتفاق الملاحظين' : 'IOA Agreement'}</span>
+            <span className="text-lg font-bold text-[#0F766E]">{ds.ioaPercent !== null ? `${ds.ioaPercent}%` : '—'}</span>
+          </div>
+        </div>
+
+        {/* Behavior plan: BIP, ABC function, reinforcers, home practice */}
+        {hasPlanData && (
+          <div className="space-y-2" data-testid="report-plan-section">
+            <h4 className="text-xs font-bold text-[#1F1B3A] dark:text-white uppercase tracking-wider">{isAr ? 'خطة السلوك' : 'Behavior plan'}</h4>
+            <div className="rounded-2xl border border-[#E8E2D9] dark:border-[#38325E] divide-y divide-[#EDE8DF] dark:divide-[#38325E] text-xs">
+              {planData.bip && (
+                <div className="p-3 space-y-0.5">
+                  <p className="font-bold">{isAr ? 'خطة التدخل السلوكي' : 'BIP'} v{planData.bip.version} · {planData.bip.status}</p>
+                  <p dir="auto">{planData.bip.targetBehavior}{planData.bip.hypothesizedFunction ? ` — ${FUNCTION_NAME[planData.bip.hypothesizedFunction]}` : ''}</p>
+                  <p className="text-[#5C706C]" dir="auto">{isAr ? 'السلوك البديل' : 'Replacement'}: {planData.bip.replacementBehavior}</p>
+                </div>
+              )}
+              {planData.abc.length > 0 && (
+                <div className="p-3">
+                  <p className="font-bold">{isAr ? 'ABC والوظيفة' : 'ABC & function'}</p>
+                  <p>{abcSum.total} {isAr ? 'حدث' : 'events'} · {isAr ? 'متوسط الشدة' : 'avg intensity'} {abcSum.avgIntensity.toFixed(1)}/3 · {abcSum.conclusive && abcSum.topFunction ? `${FUNCTION_NAME[abcSum.topFunction]} (${Math.round(abcSum.topShare * 100)}%)` : (isAr ? 'الوظيفة غير حاسمة' : 'function inconclusive')}</p>
+                </div>
+              )}
+              {topReinf.length > 0 && (
+                <div className="p-3">
+                  <p className="font-bold">{isAr ? 'أعلى المعززات' : 'Top reinforcers'}</p>
+                  <p dir="auto">{topReinf.map(r => `${r.name} (${r.preference}/5)`).join(' · ')}</p>
+                </div>
+              )}
+              {taskSum.total > 0 && (
+                <div className="p-3">
+                  <p className="font-bold">{isAr ? 'التدريب المنزلي' : 'Home practice'}</p>
+                  <p>{taskSum.done} {isAr ? 'من' : 'of'} {taskSum.total} {isAr ? 'مهام مكتملة' : 'tasks completed'}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Applied Procedures Tag Cloud */}
+        <div>
+          <span className="text-xs font-bold text-[#1F1B3A] dark:text-white block mb-1.5">
+            {isAr ? 'الإجراءات المنفذة في هذه الجلسة:' : 'Clinical Procedures Delivered:'}
+          </span>
+          <div className="flex flex-wrap gap-1.5">
+            {selectedProcedures.map(p => (
+              <span key={p} className="px-2 py-0.5 bg-gray-100 dark:bg-gray-800 text-[11px] font-medium text-gray-700 dark:text-gray-300 rounded-md">
+                ✓ {procedureName(p, isAr)}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* Therapist Narrative Note */}
+        <div>
+          <span className="text-xs font-bold text-[#1F1B3A] dark:text-white block mb-1">
+            {isAr ? 'ملاحظات الأخصائي الإكلينيكية والتوصيات:' : 'Therapist Notes & Recommendations:'}
+          </span>
+          <p className="text-xs text-[#5C706C] dark:text-gray-300 p-3 rounded-xl bg-gray-50 dark:bg-gray-800 leading-relaxed border border-gray-100 dark:border-gray-700">
+            {sessionNotes}
+          </p>
+        </div>
+
+        {/* Share & Export Action Grid */}
+        <div className="pt-2 border-t border-gray-100 dark:border-gray-800 space-y-2.5">
+          <div className="grid grid-cols-2 gap-2">
+            {/* Share to Parents */}
+            <button
+              onClick={() => setReportShare('team')}
+              className="py-3 px-3 rounded-xl bg-[#0F766E] hover:bg-[#0B5F58] text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isAr ? 'إرسال إلى ولي الأمر' : 'Send to parents'}</span>
+            </button>
+
+            {/* Submit to Supervisor */}
+            <button
+              onClick={() => {
+                shareSoapNote(['contact-circle'], { text: buildReportText(), childName: activeChild.name, authorName: currentUserName, authorRole: 'behavior', tag: 'Report for sign-off' });
+              }}
+              className="py-3 px-3 rounded-xl bg-white dark:bg-[#1F1B3A] border border-[#0F766E] text-[#0F766E] dark:text-teal-300 text-xs font-semibold flex items-center justify-center gap-1.5 hover:bg-teal-50 transition active:scale-95"
+            >
+              <UserCheck className="w-3.5 h-3.5" />
+              <span>{isAr ? 'إرسال للمشرف' : 'Submit to Care Circle'}</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {/* Print / Export PDF */}
+            <button
+              onClick={() => window.print()}
+              className="py-2.5 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+            >
+              <Printer className="w-3.5 h-3.5 text-gray-500" />
+              <span>{isAr ? 'طباعة / تصدير PDF' : 'Print / Export PDF'}</span>
+            </button>
+
+            {/* Copy Summary */}
+            <button
+              onClick={handleCopyReport}
+              className="py-2.5 px-3 rounded-xl border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-300 text-xs font-medium flex items-center justify-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 transition"
+            >
+              {copiedReport ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-gray-500" />}
+              <span>{copiedReport ? (isAr ? 'تم النسخ!' : 'Copied!') : (isAr ? 'نسخ النص' : 'Copy Text')}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
   );
 
   return (
-    <div className="max-w-md mx-auto px-4 pt-3">
+    <div className="max-w-md md:max-w-6xl mx-auto px-4 md:px-8 pt-3 md:pt-6">
       {activeTab.toLowerCase() === 'today' && (
-        sessionSubView === 'plan' ? renderPlanView() :
-        sessionSubView === 'continuous' ? renderContinuousView() :
-        sessionSubView === 'interval' ? renderIntervalView() :
-        sessionSubView === 'other_measures' ? renderOtherMeasuresView() :
-        renderDatasheetView()
+        sessionSubView === 'plan' ? (
+          <SessionPlanner 
+            role="behavior" 
+            onSaved={() => setSessionSubView('datasheet')} 
+          />
+        ) :
+        (
+          <BehaviorDatasheetViews
+            ds={ds}
+            plan={plan}
+            isAr={isAr}
+            view={sessionSubView}
+            setView={setSessionSubView}
+            childName={activeChild.name}
+            childrenList={childrenList}
+            activeChildId={activeChild.id}
+            onChildChange={setSelectedChildId}
+            targetName={behaviorTarget.name}
+            onEditPlan={() => setSessionSubView('plan')}
+            onOpenReport={() => setShowReportModal(true)}
+            onSave={handleSaveSession}
+            onAddMeasure={handleAddMeasure}
+            notify={showNotification}
+          />
+        )
       )}
       {activeTab.toLowerCase() === 'targets' && renderTargetsTab()}
       {activeTab.toLowerCase() === 'graphs' && renderGraphsTab()}
+      {activeTab.toLowerCase() === 'bip' && <BipPortal />}
       {activeTab.toLowerCase() === 'notes' && renderNotesTab()}
+      {activeTab.toLowerCase() === 'family' && <FamilyPanel />}
+
+      {editingTarget !== undefined && (
+        <TargetEditorModal
+          isAr={isAr}
+          target={editingTarget}
+          childName={activeChild.name}
+          onClose={() => setEditingTarget(undefined)}
+          onDelete={editingTarget ? () => { deleteTarget(editingTarget.id); setEditingTarget(undefined); } : undefined}
+          onSave={(v) => {
+            const criterion = `${v.criterionThreshold}% across ${v.sessionsRequired} sessions`;
+            if (editingTarget) {
+              updateTarget(editingTarget.id, {
+                name: v.name, domain: v.domain, operationalDefinition: v.operationalDefinition,
+                procedureSteps: v.procedureSteps, materials: v.materials, criterionThreshold: v.criterionThreshold,
+                masteryCriterion: criterion, baseline: v.baseline, status: v.status,
+              });
+            } else {
+              addTarget({
+                childId: activeChild.id, discipline: 'behavior', name: v.name, domain: v.domain,
+                operationalDefinition: v.operationalDefinition, procedureSteps: v.procedureSteps, materials: v.materials,
+                masteryCriterion: criterion, criterionThreshold: v.criterionThreshold, baseline: v.baseline,
+                status: v.status, therapistName: currentUserName,
+              });
+            }
+            setEditingTarget(undefined);
+          }}
+        />
+      )}
+
+      {/* Render Report & Share Modal */}
+      {showReportModal && renderReportModal()}
+
+      {reportShare && (
+        <ShareToTeamModal
+          role="behavior"
+          isAr={isAr}
+          title={isAr ? 'إرسال التقرير داخل التطبيق' : 'Send report inside the app'}
+          subtitle={`${activeChild.name} · ${behaviorTarget.name}`}
+          text={buildReportText()}
+          tag="Session Report"
+          childName={activeChild.name}
+          authorName={currentUserName}
+          onClose={() => setReportShare(null)}
+        />
+      )}
+
     </div>
   );
 };

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { RoleType } from '../../types';
+import { useAuth } from '../../context/AuthContext';
+import { serverConfigured } from '../../api/client';
 import { 
   ChevronDown, 
   Globe, 
@@ -14,10 +16,12 @@ import {
   Check, 
   Smartphone,
   Bell,
-  Settings
+  Settings,
+  FileCheck,
+  LogOut
 } from 'lucide-react';
 
-export const Header: React.FC = () => {
+export const Header: React.FC<{ onOpenAudit?: () => void }> = ({ onOpenAudit }) => {
   const { 
     role, 
     setRole, 
@@ -36,8 +40,13 @@ export const Header: React.FC = () => {
     setChildScheduleMode,
     setIsNotificationsOpen,
     unreadNotificationsCount,
-    setIsSettingsOpen
+    setIsSettingsOpen,
+    isServerMode,
+    currentUserName,
+    orgName,
+    logout
   } = useApp();
+  const auth = useAuth();
 
   const [childDropdownOpen, setChildDropdownOpen] = useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
@@ -57,14 +66,24 @@ export const Header: React.FC = () => {
   const currentRoleConfig = role ? roleColors[role] : roleColors.parent;
 
   return (
-    <header className="sticky top-0 z-40 bg-white/95 dark:bg-[#1A1733]/95 backdrop-blur-md border-b border-[#E8E2D9] dark:border-[#2D284D] transition-colors">
+    <header className="relative shrink-0 z-50 pt-safe bg-white/95 dark:bg-[#1A1733]/95 backdrop-blur-md border-b border-[#E8E2D9] dark:border-[#2D284D] transition-colors">
       {/* Top micro-bar with quick simulator toggles (Language, Dark mode, Offline, Role switcher, Child schedule mode) */}
-      <div className="bg-[#F4EEE6] dark:bg-[#14122B] px-3 py-1.5 flex items-center justify-between text-xs text-[#6B6785] dark:text-[#A5A0C2] border-b border-[#E8E2D9]/60 dark:border-[#2D284D]/60">
+      <div className="bg-[#F4EEE6] dark:bg-[#14122B] px-3 md:px-6 lg:px-8 py-1.5 flex items-center justify-between text-xs text-[#6B6785] dark:text-[#A5A0C2] border-b border-[#E8E2D9]/60 dark:border-[#2D284D]/60">
         <div className="flex items-center gap-2">
+          {/* Desktop Brand Pill */}
+          <div className="hidden md:flex items-center gap-2 pe-2 me-1 border-e border-[#E8E2D9] dark:border-[#38325E]">
+            <div className="w-6 h-6 rounded-lg bg-[#4F46E5] flex items-center justify-center text-white font-heading font-bold text-xs shadow-xs">
+              N
+            </div>
+            <span className="font-heading font-bold text-xs text-[#1F1B3A] dark:text-white tracking-tight">
+              {language === 'ar' ? 'نيكسيا بريدج' : 'Nexia Bridge'}
+            </span>
+          </div>
+
           {/* Quick Role Switcher Pill */}
           <div className="relative">
             <button
-              onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+              onClick={() => !isServerMode && setRoleDropdownOpen(!roleDropdownOpen)}
               className="flex items-center gap-1.5 font-medium px-2 py-0.5 rounded-full bg-white dark:bg-[#201C3D] text-[#1F1B3A] dark:text-white border border-[#E8E2D9] dark:border-[#38325E] shadow-xs hover:border-[#4F46E5] transition"
               title="Switch role"
             >
@@ -72,10 +91,10 @@ export const Header: React.FC = () => {
               <span className="truncate max-w-[110px] sm:max-w-none">
                 {language === 'ar' ? currentRoleConfig.labelAr : currentRoleConfig.labelEn}
               </span>
-              <ChevronDown className="w-3 h-3 text-[#6B6785]" />
+              {!isServerMode && <ChevronDown className="w-3 h-3 text-[#6B6785]" />}
             </button>
 
-            {roleDropdownOpen && (
+            {roleDropdownOpen && !isServerMode && (
               <div className="absolute left-0 mt-1 w-64 bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-xl shadow-warm py-1.5 z-50 animate-in fade-in zoom-in-95">
                 <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#6B6785] dark:text-[#8E8AAB]">
                   Switch Portal Role
@@ -145,6 +164,28 @@ export const Header: React.FC = () => {
             <span className="hidden sm:inline">{isOffline ? `Offline (${syncQueueCount})` : 'Synced'}</span>
           </button>
 
+          {isServerMode ? (
+            <button
+              onClick={logout}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white dark:bg-[#201C3D] border border-[#E8E2D9] dark:border-[#38325E] hover:border-rose-400 text-[11px] font-medium transition"
+              title="Sign out"
+              aria-label="Sign out"
+            >
+              <LogOut className="w-3 h-3 text-rose-600" />
+              <span>Sign out</span>
+            </button>
+          ) : (
+            serverConfigured() && (
+              <button
+                onClick={auth.leaveDemo}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white dark:bg-[#201C3D] border border-[#E8E2D9] dark:border-[#38325E] hover:border-[#4F46E5] text-[11px] font-medium transition"
+                title="Sign in to the server"
+              >
+                <span>Sign in</span>
+              </button>
+            )
+          )}
+
           {/* Language Switch */}
           <button
             onClick={toggleLanguage}
@@ -154,6 +195,18 @@ export const Header: React.FC = () => {
             <Globe className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
             <span>{language === 'en' ? 'العربية' : 'EN'}</span>
           </button>
+
+          {/* Prompt & PDF compliance audit (moved here from a floating button) */}
+          {onOpenAudit && (
+            <button
+              onClick={onOpenAudit}
+              className="p-1 rounded-full bg-white dark:bg-[#201C3D] border border-[#E8E2D9] dark:border-[#38325E] hover:text-indigo-600 transition"
+              title="Prompt & PDF Compliance Audit"
+              aria-label="Prompt and PDF compliance audit"
+            >
+              <FileCheck className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+            </button>
+          )}
 
           {/* Dark Mode */}
           <button
@@ -167,26 +220,42 @@ export const Header: React.FC = () => {
         </div>
       </div>
 
-      {/* Main Header bar matching Screenshot 1 exactly */}
-      <div className="max-w-md mx-auto px-4 py-3 flex items-center justify-between">
+      {/* Main Header bar: mobile width on phones, full width on desktop web */}
+      <div className="max-w-md md:max-w-none mx-auto px-4 md:px-6 lg:px-8 py-3 flex items-center justify-between">
         {/* Left: User Avatar S, Name, Role badge, and Child Switcher */}
         <div className="flex items-center gap-3">
           <div className="w-11 h-11 rounded-full bg-[#EDE9FE] dark:bg-purple-950/70 text-[#7C3AED] dark:text-purple-300 font-bold text-lg flex items-center justify-center shadow-xs shrink-0 border border-purple-200 dark:border-purple-800">
-            {role === 'parent' ? 'S' : role === 'speech' ? 'س' : role === 'ot' ? 'ر' : role === 'behavior' ? 'ط' : role === 'teacher' ? 'ل' : 'A'}
+            {isServerMode ? (currentUserName.trim()[0] ?? '?').toUpperCase() : role === 'parent' ? 'S' : role === 'speech' ? 'س' : role === 'ot' ? 'ر' : role === 'behavior' ? 'ط' : role === 'teacher' ? 'ل' : 'A'}
           </div>
 
           <div>
             <div className="flex items-center gap-2">
               <span className="font-heading font-bold text-base text-[#1F1B3A] dark:text-white leading-tight">
-                {role === 'parent' ? 'Sarah Alharbi' : role === 'speech' ? 'Dr. Sarah Alharbi' : role === 'ot' ? 'Reem Al-Ahmad' : role === 'behavior' ? 'Dr. Tareq Hassan' : role === 'teacher' ? 'Ms. Layla Fahad' : 'Sarah Alharbi'}
+                {currentUserName}
               </span>
               <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#F4EEE6] dark:bg-[#252044] text-[#6B6785] dark:text-gray-300 border border-[#E8E2D9] dark:border-gray-700">
-                {role === 'parent' ? 'Mother' : role === 'speech' ? 'SLP' : role === 'ot' ? 'OT' : role === 'behavior' ? 'BCBA' : role === 'teacher' ? 'Teacher' : 'Lead'}
+                {role === 'parent' ? 'Mother' : role === 'speech' ? 'SLP' : role === 'ot' ? 'OT' : role === 'behavior' ? 'BCBA' : role === 'teacher' ? 'Teacher' : role === 'admin' ? 'Admin' : role === 'supervisor' ? 'Supervisor' : 'Lead'}
               </span>
             </div>
 
+            {/* Administrators have no child: show the organisation instead */}
+            {role === 'admin' && (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-[#10B981] dark:text-emerald-400 mt-0.5" data-testid="header-org">
+                <span className="w-2 h-2 rounded-full bg-[#10B981]"></span>
+                <span className="truncate max-w-[170px] md:max-w-md">{orgName}</span>
+              </p>
+            )}
+
+            {/* Supervisors work across the whole caseload, so there is no single child to pick */}
+            {role === 'supervisor' && (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-[#10B981] dark:text-emerald-400 mt-0.5" data-testid="header-caseload">
+                <span className="w-2 h-2 rounded-full bg-[#10B981]"></span>
+                <span>All children ({childrenList.length})</span>
+              </p>
+            )}
+
             {/* Child Indicator with Green Dot & Dropdown */}
-            <div className="relative mt-0.5">
+            {role !== 'admin' && role !== 'supervisor' && <div className="relative mt-0.5">
               <button
                 onClick={() => setChildDropdownOpen(!childDropdownOpen)}
                 className="flex items-center gap-1.5 text-xs font-semibold text-[#10B981] dark:text-emerald-400 hover:text-emerald-600 transition"
@@ -222,7 +291,7 @@ export const Header: React.FC = () => {
                   ))}
                 </div>
               )}
-            </div>
+            </div>}
           </div>
         </div>
 
@@ -242,54 +311,15 @@ export const Header: React.FC = () => {
             )}
           </button>
 
-          {/* Settings Gear Icon */}
-          <button
+          {/* Settings Gear Icon (administrators have a Settings tab instead) */}
+          {role !== 'admin' && <button
             onClick={() => setIsSettingsOpen(true)}
             className="p-2 rounded-2xl bg-white dark:bg-[#201C3D] border border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-white shadow-xs hover:border-[#4F46E5] transition"
             title="Settings & Privacy"
           >
             <Settings className="w-5 h-5 text-[#1F1B3A] dark:text-white" />
-          </button>
+          </button>}
         </div>
-      </div>
-
-      {/* Quick 1-Tap Portal Navigation Strip across all 8 roles */}
-      <div className="max-w-md mx-auto px-4 pb-2 overflow-x-auto no-scrollbar flex items-center gap-1.5 text-xs">
-        <button
-          onClick={() => setRole(null)}
-          className="px-2.5 py-1 rounded-full text-[11px] font-semibold border transition shrink-0 bg-white dark:bg-[#201C3D] border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785] hover:text-[#1F1B3A] hover:border-gray-400"
-          title="Return to Launch Screen"
-        >
-          📱 Launch
-        </button>
-
-        {[
-          { key: 'parent', label: 'Parent' },
-          { key: 'behavior', label: 'Behavior' },
-          { key: 'speech', label: 'Speech' },
-          { key: 'ot', label: 'OT' },
-          { key: 'teacher', label: 'Teacher' },
-          { key: 'remedial', label: 'Remedial' },
-          { key: 'supervisor', label: 'Supervisor' },
-          { key: 'admin', label: 'Admin' },
-        ].map((item) => {
-          const isCurrent = role === item.key;
-          const conf = roleColors[item.key as RoleType];
-          return (
-            <button
-              key={item.key}
-              onClick={() => setRole(item.key as RoleType)}
-              className={`px-2.5 py-1 rounded-full text-[11px] font-semibold flex items-center gap-1.5 transition shrink-0 border ${
-                isCurrent
-                  ? `${conf.bg} text-[#1F1B3A] dark:text-white border-[#4F46E5]/40 shadow-xs font-bold`
-                  : 'bg-white dark:bg-[#201C3D] border-[#E8E2D9] dark:border-[#38325E] text-[#6B6785] dark:text-gray-300 hover:border-gray-400'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${conf.dot}`}></span>
-              <span>{item.label}</span>
-            </button>
-          );
-        })}
       </div>
     </header>
   );

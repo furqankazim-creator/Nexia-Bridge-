@@ -51,3 +51,73 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ---------- Responsive Web & Mobile App Shell ---------- */
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  -webkit-text-size-adjust: 100%;
+  -webkit-tap-highlight-color: transparent;
+}
+
+button, a, [role="button"], [role="tab"], [role="switch"], summary {
+  touch-action: manipulation;
+}
+
+button { cursor: pointer; }
+
+/* Notch / home-indicator safe areas (used by Header, BottomTabBar, toasts) */
+.pt-safe { padding-top: env(safe-area-inset-top); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+
+.app-backdrop {
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  background: #FBF7F2;
+}
+.dark .app-backdrop { background: #14122B; }
+
+.app-frame {
+  --app-h: 100vh;
+  --app-h: 100dvh;
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  height: var(--app-h);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #FBF7F2;
+  transform: translateZ(0);
+}
+.dark .app-frame { background: #14122B; }
+
+.app-scroll {
+  flex: 1 1 0%;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 767px) {
+  .app-scroll {
+    scrollbar-width: none;
+  }
+  .app-scroll::-webkit-scrollbar { display: none; }
+}
+
+/* iOS zooms into inputs under 16px; keep forms steady on touch devices */
+@media (pointer: coarse) {
+  input, textarea, select { font-size: 16px !important; }
+}

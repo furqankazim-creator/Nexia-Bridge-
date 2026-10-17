@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
+import { OWN_THREAD } from '../../utils/threads';
 import { RoleType } from '../../types';
 import { 
   Settings, 
@@ -34,6 +36,11 @@ export const SettingsModal: React.FC = () => {
     setActiveContactId,
     showNotification 
   } = useApp();
+  const { user: authUser } = useAuth();
+  const isServerMode = !!authUser;
+  const AVATAR: Record<string, string> = { speech: 'bg-[#EDE9FE] text-[#7C3AED]', ot: 'bg-[#D1FAE5] text-[#10B981]', behavior: 'bg-[#E0E7FF] text-[#4F46E5]', teacher: 'bg-[#FEF3C7] text-[#F59E0B]', remedial: 'bg-[#EDE9FE] text-[#7C3AED]', supervisor: 'bg-[#F1F5F9] text-[#334155]' };
+  const realTeam = activeChild.assignedTeam.map((m) => ({ id: OWN_THREAD[m.role] ?? 'contact-circle', name: m.name, role: m.title || m.role, initial: m.name.trim().charAt(0).toUpperCase(), bg: AVATAR[m.role] ?? AVATAR.supervisor, domains: ({ speech: 'Speech & language', ot: 'Occupational therapy', behavior: 'Behavior support', teacher: 'Classroom', remedial: 'Remedial teaching', supervisor: 'Clinical supervision' } as Record<string, string>)[m.role] ?? m.role }));
+  const shownTeamCount = isServerMode ? realTeam.length : 5;
 
   const [pushEnabled, setPushEnabled] = useState(true);
   const [quietHours, setQuietHours] = useState(true);
@@ -86,7 +93,18 @@ export const SettingsModal: React.FC = () => {
               supervisor: { name: 'Dr. Rebecca Hall', title: 'Clinical Director & Supervisor (BCBA-D)', email: 'rebecca.director@nexiabridge.sa', avatar: 'R', bg: 'bg-[#F1F5F9]', text: 'text-[#334155]', detail: 'Multidisciplinary Governance & Mastery Review' },
               admin: { name: 'System Administrator', title: 'Clinic Operations & PDPL Officer', email: 'admin@nexiabridge.sa', avatar: 'A', bg: 'bg-[#E2E8F0]', text: 'text-[#0F172A]', detail: 'Nexia Bridge Healthcare Center • Riyadh HQ' },
             };
-            const currentProfile = role ? roleProfiles[role] : roleProfiles.parent;
+            const demoProfile = role ? roleProfiles[role] : roleProfiles.parent;
+            // Signed in to the server: show the real person and the details the administrator entered.
+            const currentProfile = authUser
+              ? {
+                  ...demoProfile,
+                  name: authUser.name,
+                  email: authUser.email,
+                  avatar: authUser.name.trim().charAt(0).toUpperCase() || '?',
+                  title: authUser.title || demoProfile.title,
+                  detail: [authUser.centerName, authUser.phone].filter(Boolean).join(' · ') || (authUser.role === 'parent' ? `Parent of ${activeChild.name}` : 'Nexia Bridge'),
+                }
+              : demoProfile;
 
             return (
               <div className="p-4 rounded-2xl bg-[#FAF6F0] dark:bg-[#252044] border border-[#E8E2D9] dark:border-[#38325E] flex items-center gap-3">
@@ -203,24 +221,25 @@ export const SettingsModal: React.FC = () => {
             <div className="flex items-center justify-between">
               <h5 className="font-bold uppercase tracking-wider text-[10px] text-[#6B6785] dark:text-gray-400 flex items-center gap-1.5">
                 <Users className="w-3.5 h-3.5 text-[#4F46E5]" />
-                <span>{isAr ? `فريق رعاية ${activeChild.name} (5 مختصين)` : `${activeChild.name}'s Care Team (5 Specialists)`}</span>
+                <span>{isAr ? `فريق رعاية ${activeChild.name} (${shownTeamCount} مختصين)` : `${activeChild.name}'s Care Team (${shownTeamCount} ${shownTeamCount === 1 ? 'Specialist' : 'Specialists'})`}</span>
               </h5>
-              <button
+              {!isServerMode && <button
                 onClick={() => showNotification(isAr ? 'تم فتح نموذج دعوة ممارس صحي جديد' : 'Invite new practitioner link generated')}
                 className="text-[11px] font-bold text-[#4F46E5] dark:text-indigo-400 hover:underline"
               >
                 + {isAr ? 'دعوة مختص' : 'Invite Specialist'}
-              </button>
+              </button>}
             </div>
 
+            {isServerMode && realTeam.length === 0 && <p className="text-[11px] text-[#6B6785]">{isAr ? 'لم يُعيَّن مختصون بعد. يضيفهم مدير النظام.' : 'No specialists assigned yet. Your administrator adds them.'}</p>}
             <div className="space-y-2.5">
-              {[
+              {(isServerMode ? realTeam : [
                 { id: 'contact-slp', name: 'Dr. Sarah Alharbi (Lead SLP)', role: 'Speech-Language Pathologist', initial: 'س', bg: 'bg-[#EDE9FE] text-[#7C3AED]', domains: 'Speech & Communication, Attention' },
                 { id: 'contact-ot', name: 'Reem Al-Ahmad (OT Specialist)', role: 'Occupational Therapist', initial: 'ر', bg: 'bg-[#D1FAE5] text-[#10B981]', domains: 'Fine Motor, Dressing & ADL' },
                 { id: 'contact-bcba', name: 'Dr. Tareq Hassan (BCBA)', role: 'Board Certified Behavior Analyst', initial: 'ط', bg: 'bg-[#E0E7FF] text-[#4F46E5]', domains: 'Functional Behavior, Requesting' },
                 { id: 'contact-teacher', name: 'Ms. Layla Fahad (Special Educator)', role: 'Inclusive Classroom Teacher', initial: 'ل', bg: 'bg-[#FEF3C7] text-[#F59E0B]', domains: 'Classroom Inclusion, Science' },
                 { id: 'contact-circle', name: 'Dr. Rebecca Hall', role: 'Clinical Director & Supervisor', initial: 'R', bg: 'bg-[#F1F5F9] text-[#334155]', domains: 'Mastery Approval & Governance' },
-              ].map((specialist) => (
+              ]).map((specialist) => (
                 <div
                   key={specialist.id}
                   className="p-3.5 rounded-2xl bg-[#FAF6F0] dark:bg-[#252044] border border-[#E8E2D9] dark:border-[#38325E] space-y-2 shadow-xs"
@@ -247,7 +266,7 @@ export const SettingsModal: React.FC = () => {
 
                   <div className="flex items-center justify-between pt-1 border-t border-[#E8E2D9]/70 dark:border-gray-800 text-[10px]">
                     <span className="text-[#6B6785] dark:text-gray-400 truncate max-w-[190px]">
-                      Access: {specialist.domains}
+                      {isServerMode ? specialist.domains : `Access: ${specialist.domains}`}
                     </span>
                     <button
                       onClick={() => {

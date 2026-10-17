@@ -52,7 +52,7 @@ export const ChildScheduleMode: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#FBF7F2] dark:bg-[#14122B] overflow-y-auto p-4 sm:p-6 flex flex-col justify-between max-w-md mx-auto">
+    <div className="fixed inset-0 z-50 bg-[#FBF7F2] dark:bg-[#14122B] overflow-y-auto p-4 sm:p-6 md:p-10 flex flex-col justify-between max-w-md md:max-w-4xl mx-auto">
       {/* Top Header */}
       <div>
         <div className="flex items-center justify-between mb-4">

@@ -24,7 +24,7 @@ export const LaunchScreen: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#FBF7F2] dark:bg-[#14122B] flex flex-col justify-between p-4 sm:p-6 max-w-md mx-auto relative overflow-hidden transition-colors">
+    <div className="min-h-full bg-[#FBF7F2] dark:bg-[#14122B] flex flex-col justify-between p-4 sm:p-6 md:p-10 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] max-w-md md:max-w-5xl w-full mx-auto relative overflow-hidden transition-colors">
       {/* Decorative background warmth */}
       <div className="absolute top-0 right-0 w-72 h-72 bg-indigo-200/20 dark:bg-indigo-900/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
       <div className="absolute bottom-10 left-0 w-72 h-72 bg-[#FFE4DF]/30 dark:bg-rose-900/10 rounded-full blur-3xl pointer-events-none -ml-20"></div>
@@ -91,7 +91,7 @@ export const LaunchScreen: React.FC = () => {
         </div>
 
         {/* Headline & Subline */}
-        <h1 className="font-heading text-3xl sm:text-[34px] font-bold text-[#1F1B3A] dark:text-white leading-[1.2] mb-3">
+        <h1 className="font-heading text-3xl sm:text-[34px] md:text-4xl font-bold text-[#1F1B3A] dark:text-white leading-[1.2] mb-3">
           {isAr ? (
             <>طفل واحد. فريق واحد.<br /><span className="text-[#4F46E5]">رؤية واحدة مشتركة.</span></>
           ) : (
@@ -112,7 +112,7 @@ export const LaunchScreen: React.FC = () => {
               {isAr ? 'أنا...' : 'I am a…'}
             </p>
 
-            <div className="space-y-3">
+            <div className="space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-4">
               {/* Parent or caregiver */}
               <button
                 onClick={() => selectRole('parent')}

@@ -1,0 +1,7 @@
+{
+  "name": "nexia-guide",
+  "private": true,
+  "type": "module",
+  "description": "Builds the client guide (screenshots + PDF) from the running demo app.",
+  "dependencies": { "puppeteer-core": "^24.0.0" }
+}

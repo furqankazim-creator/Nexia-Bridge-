@@ -125,7 +125,7 @@ export const INITIAL_CHILDREN: Child[] = [
 export const INITIAL_CONSENT_GRANTS: ConsentGrant[] = [
   {
     id: 'grant-1',
-    childId: 'child-1',
+    childId: 'child-lama',
     professionalId: 'prof-behavior',
     professionalName: 'Dr. Maya Lin',
     role: 'behavior',
@@ -143,7 +143,7 @@ export const INITIAL_CONSENT_GRANTS: ConsentGrant[] = [
   },
   {
     id: 'grant-2',
-    childId: 'child-1',
+    childId: 'child-lama',
     professionalId: 'prof-speech',
     professionalName: 'Elena Vance',
     role: 'speech',
@@ -161,7 +161,7 @@ export const INITIAL_CONSENT_GRANTS: ConsentGrant[] = [
   },
   {
     id: 'grant-3',
-    childId: 'child-1',
+    childId: 'child-lama',
     professionalId: 'prof-ot',
     professionalName: 'Marcus Reed',
     role: 'ot',
@@ -179,7 +179,7 @@ export const INITIAL_CONSENT_GRANTS: ConsentGrant[] = [
   },
   {
     id: 'grant-4',
-    childId: 'child-1',
+    childId: 'child-lama',
     professionalId: 'prof-teacher',
     professionalName: 'Emma Watson',
     role: 'teacher',
@@ -197,7 +197,7 @@ export const INITIAL_CONSENT_GRANTS: ConsentGrant[] = [
   },
   {
     id: 'grant-5',
-    childId: 'child-1',
+    childId: 'child-lama',
     professionalId: 'prof-remedial',
     professionalName: 'James Chen',
     role: 'remedial',
@@ -303,6 +303,7 @@ export const INITIAL_TARGETS: Target[] = [
     suggestedAction: 'Goal ready for supervisor mastery review & generalization',
     suggestedNextStep: 'Generalize to noisy cafeteria and playground transitions',
     approvalStatus: 'awaiting_approval',
+    submittedAt: new Date(Date.now() - 9 * 86400000).toISOString(),
     lastThreeSessions: [90, 92, 92],
     contributingSessions: [
       { id: 's-7', date: 'Oct 12, 2026', therapistName: 'Dr. Tareq Hassan', scorePercent: 92, notes: 'Lama met mastery threshold! Latency dropped to 2.8s across 10 trials.', trialsRecorded: '10 trials (9 independent, 1 prompt)', source: 'Clinic Session' },
@@ -374,11 +375,11 @@ export const INITIAL_TARGETS: Target[] = [
   },
   {
     id: 'target-1',
-    childId: 'child-1',
+    childId: 'child-2',
     discipline: 'speech',
     name: 'Answering WH Questions',
     domain: 'Communication & Receptive Language',
-    operationalDefinition: 'Given a picture scene or short 2-sentence story and a "who", "what", or "where" question, Leo will respond with an accurate single word or phrase within 5 seconds without physical prompting.',
+    operationalDefinition: 'Given a picture scene or short 2-sentence story and a "who", "what", or "where" question, Maya will respond with an accurate single word or phrase within 5 seconds without physical prompting.',
     materials: ['Everyday scenario flashcards (kitchen, playground, school)', 'Visual question prompt icon cards ("Who", "What", "Where")'],
     procedureSteps: [
       '1. Present visual scenario card in front of student.',
@@ -394,11 +395,13 @@ export const INITIAL_TARGETS: Target[] = [
     suggestedAction: 'Continue current target with verbal prompt fading',
     suggestedNextStep: 'Review related prerequisite skill (identifying locations in picture scenes)',
     approvalStatus: 'needs_review',
+    reviewNote: 'Please add the baseline and a target date, then resubmit.',
+    therapistName: 'Dr. Sarah Alharbi',
     lastThreeSessions: [80, 85, 85]
   },
   {
     id: 'target-2',
-    childId: 'child-1',
+    childId: 'child-2',
     discipline: 'behavior',
     name: 'Identifying Common Objects (DTT)',
     domain: 'Receptive Identification',
@@ -417,16 +420,21 @@ export const INITIAL_TARGETS: Target[] = [
     status: 'teaching',
     suggestedAction: 'Continue current target; mastery near',
     suggestedNextStep: 'Prepare generalization probes across novel therapy rooms and home setting',
-    approvalStatus: 'approved',
+    approvalStatus: 'awaiting_approval',
+    submittedAt: new Date(Date.now() - 3 * 86400000).toISOString(),
+    baseline: 60,
+    targetDate: new Date(Date.now() + 75 * 86400000).toISOString().slice(0, 10),
+    promptLevel: 'Full physical → partial physical → gestural → independent',
+    therapistName: 'Dr. Tareq Hassan',
     lastThreeSessions: [75, 85, 88]
   },
   {
     id: 'target-3',
-    childId: 'child-1',
+    childId: 'child-3',
     discipline: 'ot',
     name: 'Buttoning a Shirt (Task Analysis)',
     domain: 'Independent Dressing & Fine Motor',
-    operationalDefinition: 'Leo will grasp, insert, and pull through 5 large buttons on a dressing vest independently from top to bottom.',
+    operationalDefinition: 'Tariq will grasp, insert, and pull through 5 large buttons on a dressing vest independently from top to bottom.',
     materials: ['Therapy button vest with 1-inch wooden buttons', 'Mirror', 'Visual step schedule'],
     procedureSteps: [
       '1. Align bottom edge of vest.',
@@ -445,11 +453,11 @@ export const INITIAL_TARGETS: Target[] = [
   },
   {
     id: 'target-4',
-    childId: 'child-1',
+    childId: 'child-3',
     discipline: 'remedial',
     name: 'Words Correct Per Minute (WCPM Fluency)',
     domain: 'Reading & Functional Academics',
-    operationalDefinition: 'Leo will read aloud grade-appropriate 1st grade decodable text with at least 40 words correct per minute and fewer than 3 errors.',
+    operationalDefinition: 'Tariq will read aloud grade-appropriate 1st grade decodable text with at least 40 words correct per minute and fewer than 3 errors.',
     materials: ['Grade 1 Decodable Passages (Passage #14: The Red Hen)', 'Digital 60-second countdown stopwatch', 'Teacher scoring sheet'],
     procedureSteps: [
       '1. Provide student with printed passage.',
@@ -477,7 +485,7 @@ export const INITIAL_AUDIT_LOG: AuditEvent[] = [
     userName: 'Dr. Maya Lin',
     role: 'behavior',
     action: 'RECORD_SESSION_DATA',
-    resource: 'Leo Miller · Target: Identifying Objects (DTT)'
+    resource: 'Lama Alharbi · Target: Identifying Objects (DTT)'
   },
   {
     id: 'audit-2',
@@ -486,7 +494,7 @@ export const INITIAL_AUDIT_LOG: AuditEvent[] = [
     userName: 'Elena Vance',
     role: 'speech',
     action: 'COMPLETE_SPEECH_TRIAL',
-    resource: 'Leo Miller · Target: Answering WH questions (85% indep)'
+    resource: 'Lama Alharbi · Target: Answering WH questions (85% indep)'
   },
   {
     id: 'audit-3',
@@ -520,11 +528,11 @@ export const INITIAL_AUDIT_LOG: AuditEvent[] = [
 export const INITIAL_MESSAGES: MessageItem[] = [
   {
     id: 'msg-1',
-    childId: 'child-1',
+    childId: 'child-lama',
     senderName: 'Sarah Miller',
     senderRole: 'parent',
     senderAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80',
-    contentEn: 'Hi team! We tried the snack-time WH question game today. Leo answered "Where is the apple?" right away without needing a prompt!',
+    contentEn: 'Hi team! We tried the snack-time WH question game today. Lama answered "Where is the apple?" right away without needing a prompt!',
     contentAr: 'مرحباً بالفريق! جربنا لعبة أسئلة أين وماذا وقت الوجبة الخفيفة اليوم. أجاب ليو "أين التفاحة؟" فوراً دون الحاجة لمساعدة!',
     timestamp: 'Today at 3:12 PM',
     goalTag: 'Answering WH Questions',
@@ -532,7 +540,7 @@ export const INITIAL_MESSAGES: MessageItem[] = [
   },
   {
     id: 'msg-2',
-    childId: 'child-1',
+    childId: 'child-lama',
     senderName: 'Elena Vance, CCC-SLP',
     senderRole: 'speech',
     senderAvatar: 'https://images.unsplash.com/photo-1580489944761-15a19d654956?w=100&auto=format&fit=crop&q=80',
@@ -544,11 +552,11 @@ export const INITIAL_MESSAGES: MessageItem[] = [
   },
   {
     id: 'msg-3',
-    childId: 'child-1',
+    childId: 'child-lama',
     senderName: 'Emma Watson',
     senderRole: 'teacher',
     senderAvatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=100&auto=format&fit=crop&q=80',
-    contentEn: 'I also noticed Leo raised his hand during our science lesson about plants and answered where the roots grow. Great generalization!',
+    contentEn: 'I also noticed Lama raised her hand during our science lesson about plants and answered where the roots grow. Great generalization!',
     contentAr: 'لاحظت أيضاً أن ليو رفع يده أثناء درس العلوم عن النباتات وأجاب عن مكان نمو الجذور. تعميم رائع للمهارة!',
     timestamp: 'Today at 4:02 PM',
     goalTag: 'Answering WH Questions',
@@ -765,3 +773,23 @@ export const INITIAL_NOTIFICATIONS: AppNotification[] = [
     read: true
   }
 ];
+
+/** A child created by an administrator on the server: only the name is known until the team fills in the rest. */
+export const blankChild = (id: string, name: string): Child => ({
+  id,
+  name,
+  age: 0,
+  avatar: '',
+  diagnosis: '',
+  caregivers: [],
+  school: '',
+  classroom: '',
+  assignedTeam: [],
+  todayProgress: [],
+  thisWeek: {
+    whatWeWorkedOn: '',
+    whatChildIsDoingWell: '',
+    whatNeedsMorePractice: '',
+    howToPracticeAtHome: { title: '', description: '', materials: [], videoDuration: '', steps: [] },
+  },
+});

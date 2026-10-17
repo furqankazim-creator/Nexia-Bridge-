@@ -1,5 +1,11 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import type { PublicOrg } from '../api/client';
+import React, { createContext, useContext, useState, useEffect, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
+import { useAuth } from './AuthContext';
+import { useServerSync, SyncCol, OutMessage, RemoteMessage } from '../sync/useServerSync';
+import { OWN_THREAD } from '../utils/threads';
+import { primaryPercent } from '../utils/primaryPercent';
+import { parseMastery } from '../utils/decisionSupport';
 import { 
   Child, 
   RoleType, 
@@ -7,12 +13,33 @@ import {
   Target, 
   AuditEvent, 
   MessageItem, 
+  MessageAttachment,
   ObservationRecord,
   ChatContact,
-  AppNotification
+  AppNotification,
+  SessionPlan,
+  SavedSession,
+  TherapyRole,
+  ABCRecord,
+  BipPlan,
+  Reinforcer,
+  HomeTask,
+  WeeklyQuestionSet,
+  SentenceTask,
+  SentenceAttempt,
+  ArticulationLog,
+  AudioClip,
+  ChecklistItem,
+  ChecklistScore,
+  TaskAnalysis,
+  StepLevel,
+  SensoryLog
 } from '../types';
+import { demoOrg, demoRoster, DEMO_ADMIN_EVENT } from '../components/admin/demoAdmin';
+import { useSupervision, type SupervisionApi } from './useSupervision';
+import { demoAbc, demoHomeTasks, demoSessions } from '../data/demoSupervision';
 import { 
-  INITIAL_CHILDREN, 
+  INITIAL_CHILDREN, blankChild,
   INITIAL_CONSENT_GRANTS, 
   INITIAL_TARGETS, 
   INITIAL_AUDIT_LOG, 
@@ -21,7 +48,7 @@ import {
   INITIAL_NOTIFICATIONS
 } from '../data/seedData';
 
-interface AppContextType {
+interface AppContextType extends SupervisionApi {
   role: RoleType | null;
   setRole: (role: RoleType | null) => void;
   selectedChildId: string;
@@ -50,6 +77,16 @@ interface AppContextType {
   addSessionResult: (targetId: string, scorePercent: number, summaryText: string) => void;
   addTeacherObservation: (obs: Omit<ObservationRecord, 'id' | 'timestamp'>) => void;
   approveTarget: (targetId: string, newCriterion?: string) => void;
+  /** Supervisor: send a goal back to its therapist with a reason. */
+  requestGoalChanges: (targetId: string, note: string) => void;
+  /** Supervisor: sign a session off, send it back with a note, or clear an earlier decision. */
+  reviewSession: (sessionId: string, decision: 'signed' | 'changes' | 'retrain' | 'clear', note?: string) => void;
+  orgName: string;
+  setOrgName: (name: string) => void;
+  /** Organisation policies the administrator controls (goal approval, family messaging). */
+  org: PublicOrg;
+  setOrgSettings: (patch: Partial<PublicOrg>) => void;
+
   sendMessage: (text: string, goalTag?: string) => void;
   triggerConfetti: () => void;
   notification: string | null;
@@ -59,7 +96,9 @@ interface AppContextType {
   contacts: ChatContact[];
   activeContactId: string | null;
   setActiveContactId: (id: string | null) => void;
-  sendContactMessage: (contactId: string, text: string, goalTag?: string) => void;
+  sendContactMessage: (contactId: string, text: string, goalTag?: string, attachment?: MessageAttachment) => void;
+  /** Posts a saved SOAP note into the chosen care-team threads (in-app only) and notifies them. */
+  shareSoapNote: (contactIds: string[], payload: { text: string; childName: string; authorName: string; authorRole: RoleType; tag?: string; childId?: string }) => void;
 
   // Global Notifications (Bell icon)
   notifications: AppNotification[];
@@ -72,14 +111,170 @@ interface AppContextType {
   // Global Settings (Gear icon)
   isSettingsOpen: boolean;
   setIsSettingsOpen: (open: boolean) => void;
+
+  // Therapist session plans + saved datasheets
+  getSessionPlan: (childId: string, role: TherapyRole) => SessionPlan;
+  saveSessionPlan: (childId: string, role: TherapyRole, procedureIds: string[], measureIds: string[]) => void;
+  savedSessions: SavedSession[];
+  saveSession: (session: Omit<SavedSession, 'id' | 'savedAt'>) => void;
+
+  // Server connection (null / false when running as the offline demo)
+  isServerMode: boolean;
+  currentUserName: string;
+  logout: () => void;
+  /** Staff only: the invite code to give each family. */
+  inviteCodes: { id: string; name: string; inviteCode?: string }[];
+  markContactRead: (contactId: string) => void;
+
+  // Target management (therapist)
+  addTarget: (t: Omit<Target, 'id' | 'currentPerformance' | 'lastThreeSessions' | 'approvalStatus' | 'suggestedAction' | 'suggestedNextStep'> & Partial<Target>) => string;
+  updateTarget: (id: string, patch: Partial<Target>) => void;
+  deleteTarget: (id: string) => void;
+
+  // Behavior therapist clinical records
+  abcRecords: ABCRecord[];
+  addAbcRecord: (r: Omit<ABCRecord, 'id'>) => void;
+  deleteAbcRecord: (id: string) => void;
+  bips: BipPlan[];
+  saveBip: (plan: Omit<BipPlan, 'version' | 'updatedAt'>) => void;
+  reinforcers: Reinforcer[];
+  addReinforcer: (r: Omit<Reinforcer, 'id' | 'lastAssessedAt'>) => void;
+  updateReinforcer: (id: string, patch: Partial<Reinforcer>) => void;
+  removeReinforcer: (id: string) => void;
+  homeTasks: HomeTask[];
+  addHomeTask: (t: Omit<HomeTask, 'id' | 'done' | 'doneAt' | 'parentNote'>) => void;
+  setHomeTaskDone: (id: string, done: boolean, parentNote?: string) => void;
+  removeHomeTask: (id: string) => void;
+  /** Create or replace a home task with a fixed id (used to resend the same weekly questions). */
+  upsertHomeTask: (t: Omit<HomeTask, 'done' | 'doneAt' | 'parentNote'>) => void;
+
+  // Speech therapist records
+  weeklySets: WeeklyQuestionSet[];
+  saveWeeklySet: (set: WeeklyQuestionSet) => void;
+  deleteWeeklySet: (id: string) => void;
+  sentenceTasks: SentenceTask[];
+  addSentenceTask: (childId: string, target: string, image?: string) => void;
+  addSentenceAttempt: (taskId: string, attempt: Omit<SentenceAttempt, 'id' | 'at'>) => void;
+  deleteSentenceTask: (id: string) => void;
+  articulationLogs: ArticulationLog[];
+  addArticulationLog: (l: Omit<ArticulationLog, 'id' | 'at'>) => void;
+  deleteArticulationLog: (id: string) => void;
+  audioClips: AudioClip[];
+  addAudioClip: (c: Omit<AudioClip, 'id' | 'at'>) => void;
+  deleteAudioClip: (id: string) => void;
+  otChecklist: ChecklistItem[];
+  addChecklistItem: (childId: string, name: string) => void;
+  scoreChecklistItem: (id: string, score: ChecklistScore | null) => void;
+  deleteChecklistItem: (id: string) => void;
+  otTasks: TaskAnalysis[];
+  addTaskAnalysis: (t: Pick<TaskAnalysis, 'childId' | 'title' | 'domain' | 'chaining'> & { steps: string[] }) => string;
+  updateTaskAnalysis: (id: string, patch: Partial<Pick<TaskAnalysis, 'title' | 'domain' | 'chaining'>> & { steps?: string[] }) => void;
+  setStepLevel: (taskId: string, stepId: string, level: StepLevel | null) => void;
+  /** Store today's step results in each task's history and start the next session blank. */
+  closeTaskSession: (childId: string) => void;
+  deleteTaskAnalysis: (id: string) => void;
+  otSensory: SensoryLog[];
+  addSensoryLog: (l: Omit<SensoryLog, 'id' | 'at'>) => void;
+  deleteSensoryLog: (id: string) => void;
+}
+
+/** Starting selections shown on "Plan the session" (as in the client mock-ups). */
+const DEFAULT_PLAN_SELECTION: Record<TherapyRole, { procedureIds: string[]; measureIds: string[] }> = {
+  behavior: {
+    procedureIds: ['prompt_fading', 'dtt', 'extinction', 'visual_schedules'],
+    measureIds: ['frequency', 'mts'],
+  },
+  speech: {
+    procedureIds: ['prompt_fading', 'net', 'time_delay'],
+    measureIds: ['latency', 'trial_by_trial', 'cold_probe', 'mlu'],
+  },
+  // PDF page 3: Backward chaining, Task analysis, Graded activity; Duration and Accuracy measurement
+  ot: {
+    procedureIds: ['back_chain', 'task_analysis', 'graded_activity'],
+    measureIds: ['duration', 'accuracy'],
+  },
+  // PDF page 4: Task analysis, Token economy, Explicit instruction, Error correction; Rate, Percentage, Cold-probe, Words correct per minute
+  remedial: {
+    procedureIds: ['task_analysis', 'token_econ', 'explicit_inst', 'error_corr'],
+    measureIds: ['rate', 'percentage', 'cold_probe', 'wcpm'],
+  },
+};
+
+const PLANS_KEY = 'nexia.sessionPlans.v1';
+const SESSIONS_KEY = 'nexia.savedSessions.v1';
+const TARGETS_KEY = 'nexia.targets.v1';
+const ABC_KEY = 'nexia.abc.v1';
+const BIPS_KEY = 'nexia.bips.v1';
+const REINFORCERS_KEY = 'nexia.reinforcers.v1';
+const HOMETASKS_KEY = 'nexia.homeTasks.v1';
+const WEEKLY_KEY = 'nexia.weeklyQuestions.v1';
+const SENTENCES_KEY = 'nexia.sentenceTasks.v1';
+const ARTIC_KEY = 'nexia.articulationLogs.v1';
+const AUDIO_KEY = 'nexia.audioClips.v1';
+const CHECKLIST_KEY = 'nexia.otChecklist.v1';
+const OTTASKS_KEY = 'nexia.otTasks.v1';
+const OTSENSORY_KEY = 'nexia.otSensory.v1';
+
+function loadJson<T>(key: string, fallback: T): T {
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/** Demo only: add the dummy records once (by id) to whatever the device already holds, without touching the user's own work. */
+function loadSeeded<T extends { id: string }>(key: string, seeds: T[], flag: string): T[] {
+  const stored = loadJson<T[]>(key, []);
+  try {
+    if (window.localStorage.getItem(flag)) return stored;
+    window.localStorage.setItem(flag, '1');
+  } catch {
+    return stored.length ? stored : seeds;
+  }
+  const have = new Set(stored.map((x) => x.id));
+  return [...stored, ...seeds.filter((x) => !have.has(x.id))];
+}
+
+/** Demo: the children and care teams come from the demo administrator's roster, so the portals and the Admin screens agree. */
+function childrenFromRoster(prev: Child[] = []): Child[] {
+  const { kids, users } = demoRoster();
+  return kids
+    .filter(k => !k.archived)
+    .map(k => {
+      const base = prev.find(c => c.id === k.id) ?? INITIAL_CHILDREN.find(c => c.id === k.id) ?? blankChild(k.id, k.name);
+      const team = users
+        .filter(u => u.role !== 'parent' && u.role !== 'admin' && !u.disabled && u.childIds.includes(k.id))
+        .map(u => ({ role: u.role as RoleType, name: u.name, title: u.title ?? '' }));
+      return { ...base, name: k.name, assignedTeam: team };
+    });
+}
+
+function saveJson(key: string, value: unknown) {
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // storage unavailable (private mode / quota): keep working in memory
+  }
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+const DEFAULT_TAB: Record<RoleType, string> = {
+  parent: 'Home', behavior: 'Today', speech: 'Today', remedial: 'Today', teacher: 'Today', ot: 'Today', supervisor: 'Review', admin: 'Home',
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [role, setRoleState] = useState<RoleType | null>('parent');
-  const [selectedChildId, setSelectedChildId] = useState<string>('child-lama');
-  const [activeTab, setActiveTabState] = useState<string>('Home');
+  const auth = useAuth();
+  const serverUser = auth.gate === 'server' ? auth.user : null;
+  const isServerMode = !!serverUser;
+  // Server mode keeps nothing in localStorage: the server is the source of truth.
+  const load = <T,>(key: string, fallback: T): T => (isServerMode ? fallback : loadJson<T>(key, fallback));
+
+  const [role, setRoleState] = useState<RoleType | null>(serverUser?.role ?? 'parent');
+  const [selectedChildId, setSelectedChildId] = useState<string>(serverUser ? (auth.children_[0]?.id ?? serverUser.childIds[0] ?? '') : 'child-lama');
+  const [activeTab, setActiveTabState] = useState<string>(serverUser ? DEFAULT_TAB[serverUser.role] : 'Home');
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
@@ -91,8 +286,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isNotificationsOpen, setIsNotificationsOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
 
-  const [childrenList, setChildrenList] = useState<Child[]>(INITIAL_CHILDREN);
-  const [targets, setTargets] = useState<Target[]>(INITIAL_TARGETS);
+  const [childrenList, setChildrenList] = useState<Child[]>(() =>
+    serverUser
+      // The server decides which children exist for this account; the seeded demo profile is only used to fill in details.
+      ? auth.children_.map(k => ({
+          ...(INITIAL_CHILDREN.find(i => i.id === k.id) ?? blankChild(k.id, k.name)),
+          name: k.name,
+          // The real team: the staff an administrator linked to this child.
+          assignedTeam: (k.team ?? []).map(m => ({ role: m.role as RoleType, name: m.name, title: m.title })),
+        }))
+      : childrenFromRoster()
+  );
+  useEffect(() => {
+    if (isServerMode) return;
+    const refresh = () => setChildrenList(prev => childrenFromRoster(prev));
+    window.addEventListener(DEMO_ADMIN_EVENT, refresh);
+    return () => window.removeEventListener(DEMO_ADMIN_EVENT, refresh);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isServerMode]);
+  const [targets, setTargets] = useState<Target[]>(() => {
+    const stored = load<Target[]>(TARGETS_KEY, INITIAL_TARGETS);
+    if (isServerMode) return stored;
+    // The first four demo goals used to point at a child who does not exist. Move them to Maya and Tariq.
+    const fix: Record<string, string> = { 'target-1': 'child-2', 'target-2': 'child-2', 'target-3': 'child-3', 'target-4': 'child-3' };
+    return stored.map(t => (fix[t.id] && t.childId !== fix[t.id] ? { ...t, childId: fix[t.id] } : t));
+  });
   const [consentGrants, setConsentGrants] = useState<ConsentGrant[]>(INITIAL_CONSENT_GRANTS);
   const [auditLog, setAuditLog] = useState<AuditEvent[]>(INITIAL_AUDIT_LOG);
   const [messages, setMessages] = useState<MessageItem[]>(INITIAL_MESSAGES);
@@ -118,6 +336,40 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   ]);
 
+  const plansKey = serverUser ? `${PLANS_KEY}.${serverUser.id}` : PLANS_KEY;
+  const [sessionPlans, setSessionPlans] = useState<SessionPlan[]>(() => loadJson<SessionPlan[]>(plansKey, []));
+  const [savedSessions, setSavedSessions] = useState<SavedSession[]>(() => (isServerMode ? [] : loadSeeded<SavedSession>(SESSIONS_KEY, demoSessions(), 'nexia.demoSeed.sessions.v1')));
+
+  useEffect(() => saveJson(plansKey, sessionPlans), [plansKey, sessionPlans]);
+  useEffect(() => { if (!isServerMode) saveJson(SESSIONS_KEY, savedSessions); }, [savedSessions]);
+  useEffect(() => { if (!isServerMode) saveJson(TARGETS_KEY, targets); }, [targets]);
+
+  const [abcRecords, setAbcRecords] = useState<ABCRecord[]>(() => (isServerMode ? [] : loadSeeded<ABCRecord>(ABC_KEY, demoAbc(), 'nexia.demoSeed.abc.v1')));
+  const [bips, setBips] = useState<BipPlan[]>(() => load<BipPlan[]>(BIPS_KEY, []));
+  const [reinforcers, setReinforcers] = useState<Reinforcer[]>(() => load<Reinforcer[]>(REINFORCERS_KEY, []));
+  const [homeTasks, setHomeTasks] = useState<HomeTask[]>(() => (isServerMode ? [] : loadSeeded<HomeTask>(HOMETASKS_KEY, demoHomeTasks(), 'nexia.demoSeed.homeTasks.v1')));
+  useEffect(() => { if (!isServerMode) saveJson(ABC_KEY, abcRecords); }, [abcRecords]);
+  useEffect(() => { if (!isServerMode) saveJson(BIPS_KEY, bips); }, [bips]);
+  useEffect(() => { if (!isServerMode) saveJson(REINFORCERS_KEY, reinforcers); }, [reinforcers]);
+  useEffect(() => { if (!isServerMode) saveJson(HOMETASKS_KEY, homeTasks); }, [homeTasks]);
+
+  const [weeklySets, setWeeklySets] = useState<WeeklyQuestionSet[]>(() => load<WeeklyQuestionSet[]>(WEEKLY_KEY, []));
+  const [sentenceTasks, setSentenceTasks] = useState<SentenceTask[]>(() => load<SentenceTask[]>(SENTENCES_KEY, []));
+  useEffect(() => { if (!isServerMode) saveJson(WEEKLY_KEY, weeklySets); }, [weeklySets]);
+  useEffect(() => { if (!isServerMode) saveJson(SENTENCES_KEY, sentenceTasks); }, [sentenceTasks]);
+
+  const [articulationLogs, setArticulationLogs] = useState<ArticulationLog[]>(() => load<ArticulationLog[]>(ARTIC_KEY, []));
+  const [audioClips, setAudioClips] = useState<AudioClip[]>(() => load<AudioClip[]>(AUDIO_KEY, []));
+  const [otChecklist, setOtChecklist] = useState<ChecklistItem[]>(() => load<ChecklistItem[]>(CHECKLIST_KEY, []));
+  useEffect(() => { if (!isServerMode) saveJson(ARTIC_KEY, articulationLogs); }, [articulationLogs]);
+  useEffect(() => { if (!isServerMode) saveJson(AUDIO_KEY, audioClips); }, [audioClips]);
+  useEffect(() => { if (!isServerMode) saveJson(CHECKLIST_KEY, otChecklist); }, [otChecklist]);
+
+  const [otTasks, setOtTasks] = useState<TaskAnalysis[]>(() => load<TaskAnalysis[]>(OTTASKS_KEY, []));
+  const [otSensory, setOtSensory] = useState<SensoryLog[]>(() => load<SensoryLog[]>(OTSENSORY_KEY, []));
+  useEffect(() => { if (!isServerMode) saveJson(OTTASKS_KEY, otTasks); }, [otTasks]);
+  useEffect(() => { if (!isServerMode) saveJson(OTSENSORY_KEY, otSensory); }, [otSensory]);
+
   const isRtl = language === 'ar';
 
   useEffect(() => {
@@ -137,6 +389,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Set default tabs whenever role changes
   const setRole = (newRole: RoleType | null) => {
+    // A signed-in account has one role. Leaving means signing out.
+    if (isServerMode) {
+      if (newRole === null) auth.logout();
+      return;
+    }
     setRoleState(newRole);
     if (!newRole) return;
     switch (newRole) {
@@ -188,9 +445,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
   };
 
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showNotification = (msg: string) => {
     setNotification(msg);
-    setTimeout(() => {
+    // Restart the timer so an older message cannot hide a newer one early.
+    if (toastTimer.current) clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => {
       setNotification(null);
     }, 3500);
   };
@@ -208,7 +468,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
-  const activeChild = childrenList.find(c => c.id === selectedChildId) || childrenList[0];
+  const activeChild = childrenList.find(c => c.id === selectedChildId) || childrenList[0] || blankChild('none', 'No child yet');
+
+  const currentUserName =
+    serverUser?.name ??
+    (role === 'parent' ? 'Sarah Alharbi' : role === 'behavior' ? 'Dr. Tareq Hassan' : role === 'speech' ? 'Dr. Sarah Alharbi' : role === 'ot' ? 'Reem Al-Ahmad' : role === 'teacher' ? 'Ms. Layla Fahad' : role === 'remedial' ? 'Mr. Omar Khaled' : role === 'supervisor' ? 'Dr. Rebecca Hall' : role === 'admin' ? 'System Administrator' : 'Care Team Member');
 
   const updateConsentGrant = (grantId: string, domain: keyof ConsentGrant['domains'], allowed: boolean) => {
     setConsentGrants(prev => prev.map(g => {
@@ -254,16 +518,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showNotification(`Session data recorded: ${scorePercent}% independent.`);
     }
 
+    const todayDate = new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    const therapistDisplayName = serverUser ? serverUser.name : role === 'behavior' ? 'Dr. Tareq Hassan' : role === 'speech' ? 'Dr. Sarah Alharbi' : role === 'ot' ? 'Reem Al-Ahmad' : 'Therapist';
+
     setTargets(prev => prev.map(t => {
       if (t.id === targetId) {
         const newThree = [...t.lastThreeSessions.slice(1), scorePercent];
         const isMastered = newThree.every(s => s >= t.criterionThreshold);
+        const newContributing = [
+          {
+            id: `sess-${Date.now()}`,
+            date: todayDate,
+            therapistName: therapistDisplayName,
+            scorePercent: scorePercent,
+            notes: summaryText,
+            source: 'Clinic Session' as const,
+          },
+          ...(t.contributingSessions || [])
+        ];
         return {
           ...t,
           currentPerformance: scorePercent,
           lastThreeSessions: newThree,
           status: isMastered ? 'mastered' : t.status,
-          suggestedAction: isMastered ? 'Target Mastered! Ready for generalization probe.' : t.suggestedAction
+          suggestedAction: isMastered ? 'Target Mastered! Ready for generalization probe.' : t.suggestedAction,
+          contributingSessions: newContributing
         };
       }
       return t;
@@ -274,12 +553,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       id: `audit-${Date.now()}`,
       timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
       userId: `user-${role}`,
-      userName: role === 'behavior' ? 'Dr. Tareq Hassan' : role === 'speech' ? 'Dr. Sarah Alharbi' : 'Reem Al-Ahmad',
+      userName: therapistDisplayName,
       role: role || 'behavior',
       action: 'RECORD_TRIAL_DATA',
       resource: `${activeChild.name} · ${summaryText}`
     };
     setAuditLog(prev => [newAudit, ...prev]);
+  };
+
+  const getSessionPlan = (childId: string, planRole: TherapyRole): SessionPlan => {
+    const found = sessionPlans.find(p => p.childId === childId && p.role === planRole);
+    if (found) return found;
+    return {
+      childId,
+      role: planRole,
+      procedureIds: DEFAULT_PLAN_SELECTION[planRole].procedureIds,
+      measureIds: DEFAULT_PLAN_SELECTION[planRole].measureIds,
+      updatedAt: '',
+    };
+  };
+
+  const saveSessionPlan = (childId: string, planRole: TherapyRole, procedureIds: string[], measureIds: string[]) => {
+    const next: SessionPlan = { childId, role: planRole, procedureIds, measureIds, updatedAt: new Date().toISOString() };
+    setSessionPlans(prev => [...prev.filter(p => !(p.childId === childId && p.role === planRole)), next]);
+  };
+
+  const saveSession = (session: Omit<SavedSession, 'id' | 'savedAt'>) => {
+    const record: SavedSession = {
+      ...session,
+      id: `sess-${Date.now()}`,
+      savedAt: new Date().toISOString(),
+    };
+    setSavedSessions(prev => [record, ...prev]);
+
+    const pct = primaryPercent(session.summary);
+    if (pct !== null && session.targetId) {
+      // Updates the target's performance, last-three sessions, mastery status, audit log.
+      addSessionResult(
+        session.targetId,
+        pct,
+        `${session.targetName}: ${pct}% independent across ${session.summary.scoredTrials} trials.`
+      );
+    } else {
+      if (isOffline) {
+        setSyncQueueCount(prev => prev + 1);
+        showNotification('Datasheet saved offline. Will sync when connection is restored.');
+      } else {
+        showNotification('Datasheet saved.');
+      }
+      setAuditLog(prev => [{
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userId: `user-${session.role}`,
+        userName: session.therapistName,
+        role: session.role,
+        action: 'RECORD_SESSION_DATASHEET',
+        resource: `${activeChild.name} · ${session.targetName}`,
+      }, ...prev]);
+    }
   };
 
   const addTeacherObservation = (obs: Omit<ObservationRecord, 'id' | 'timestamp'>) => {
@@ -311,25 +642,111 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showNotification('Classroom observation saved and shared to child profile.');
   };
 
+  const addAudit = (action: string, resource: string) =>
+    setAuditLog(prev => [
+      {
+        id: `audit-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        timestamp: new Date().toISOString().replace('T', ' ').substring(0, 19),
+        userId: serverUser?.id ?? 'local',
+        userName: currentUserName,
+        role: role ?? 'supervisor',
+        action,
+        resource,
+      },
+      ...prev,
+    ]);
+
+  /** Tell the therapist who owns a goal or session what the supervisor decided (a team-only message in their chat). */
+  const tellTherapist = (discipline: string, childId: string, tag: string, text: string) => {
+    const thread = OWN_THREAD[discipline as RoleType];
+    if (!thread) return;
+    const childName = childrenList.find(c => c.id === childId)?.name ?? '';
+    shareSoapNote([thread], { text, childName, authorName: currentUserName, authorRole: role ?? 'supervisor', tag, childId });
+  };
+
   const approveTarget = (targetId: string, newCriterion?: string) => {
+    const t0 = targets.find(t => t.id === targetId);
     setTargets(prev => prev.map(t => {
       if (t.id === targetId) {
+        const crit = newCriterion || t.masteryCriterion;
+        const { reviewNote: _drop, ...rest } = t;
         return {
-          ...t,
+          ...rest,
           approvalStatus: 'approved',
-          masteryCriterion: newCriterion || t.masteryCriterion
+          masteryCriterion: crit,
+          criterionThreshold: parseMastery(crit, t.criterionThreshold).threshold,
+          history: [...(t.history ?? []), { at: new Date().toISOString(), by: currentUserName, action: 'approved' as const, ...(newCriterion && newCriterion !== t.masteryCriterion ? { changes: [`Mastery criterion: ${t.masteryCriterion} → ${newCriterion}`] } : {}) }],
         };
       }
       return t;
     }));
-    showNotification('Target mastery criteria approved by supervisor.');
+    if (t0) addAudit('Goal approved', `${t0.name} (${t0.discipline})${newCriterion && newCriterion !== t0.masteryCriterion ? ` · criterion set to ${newCriterion}` : ''}`);
+    showNotification('Goal approved.');
   };
+
+  const requestGoalChanges = (targetId: string, note: string) => {
+    const t0 = targets.find(t => t.id === targetId);
+    if (!t0) return;
+    setTargets(prev => prev.map(t => (t.id === targetId ? { ...t, approvalStatus: 'needs_review', reviewNote: note.trim(), reviewAckAt: undefined, history: [...(t.history ?? []), { at: new Date().toISOString(), by: currentUserName, action: 'returned' as const, note: note.trim() }] } : t)));
+    addAudit('Goal sent back for changes', `${t0.name} (${t0.discipline})`);
+    tellTherapist(t0.discipline, t0.childId, 'Supervisor feedback', `Goal "${t0.name}" needs changes: ${note.trim()}`);
+    showNotification('Sent back to the therapist with your note.');
+  };
+
+  const reviewSession = (sessionId: string, decision: 'signed' | 'changes' | 'retrain' | 'clear', note?: string) => {
+    const s0 = savedSessions.find(s => s.id === sessionId);
+    if (!s0) return;
+    setSavedSessions(prev => prev.map(s => {
+      if (s.id !== sessionId) return s;
+      if (decision === 'clear') {
+        const { review: _r, ...rest } = s;
+        return rest;
+      }
+      return { ...s, review: { status: decision, by: currentUserName, at: new Date().toISOString(), ...(note?.trim() ? { note: note.trim() } : {}) } };
+    }));
+    const label = `${s0.targetName} · ${s0.therapistName}`;
+    if (decision === 'signed') addAudit('Session signed off', label);
+    if (decision === 'changes') {
+      addAudit('Session sent back for changes', label);
+      tellTherapist(s0.role, s0.childId, 'Supervisor feedback', `Session "${s0.targetName}" (${new Date(s0.savedAt).toLocaleDateString()}) needs changes: ${(note ?? '').trim()}`);
+    }
+    if (decision === 'retrain') {
+      addAudit('Session flagged for re-training', label);
+      tellTherapist(s0.role, s0.childId, 'Supervisor feedback', `Session "${s0.targetName}" (${new Date(s0.savedAt).toLocaleDateString()}) was flagged for re-training: ${(note ?? '').trim()}`);
+    }
+    showNotification(decision === 'signed' ? 'Session signed off.' : decision === 'changes' ? 'Sent back to the therapist with your note.' : decision === 'retrain' ? 'Flagged for re-training. The therapist has been told.' : 'Decision cleared.');
+  };
+
+  const [org, setOrg] = useState<PublicOrg>(() =>
+    isServerMode ? auth.org ?? { name: 'Al-Amal Development Center', requireGoalApproval: true, parentMessaging: true } : demoOrg()
+  );
+  const orgName = org.name;
+  const setOrgSettings = (patch: Partial<PublicOrg>) => setOrg(prev => ({ ...prev, ...patch }));
+  const setOrgName = (name: string) => {
+    const n = name.trim() || 'Al-Amal Development Center';
+    setOrg(prev => ({ ...prev, name: n }));
+    addAudit('Organisation name changed', n);
+  };
+
+  const supervision = useSupervision({
+    isServerMode,
+    role,
+    userName: currentUserName,
+    notify: showNotification,
+    org,
+    targets,
+    setTargets,
+    sessions: savedSessions,
+    setSessions: setSavedSessions,
+    addAudit,
+    tellTherapist,
+  });
 
   const sendMessage = (text: string, goalTag?: string) => {
     const newMsg: MessageItem = {
       id: `msg-${Date.now()}`,
       childId: selectedChildId,
-      senderName: role === 'parent' ? 'Sarah Alharbi' : role === 'teacher' ? 'Ms. Layla Fahad' : 'Care Team Member',
+      senderName: currentUserName,
       senderRole: role || 'parent',
       senderAvatar: activeChild.avatar,
       contentEn: text,
@@ -342,34 +759,365 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showNotification('Message sent to child care team.');
   };
 
-  const sendContactMessage = (contactId: string, text: string, goalTag?: string) => {
+  const sendContactMessage = (contactId: string, text: string, goalTag?: string, attachment?: MessageAttachment) => {
+    if (role === 'parent' && !org.parentMessaging) {
+      showNotification('Messaging is turned off by your administrator.');
+      return;
+    }
     const newMsg: MessageItem = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
       childId: selectedChildId,
-      senderName: role === 'parent' ? 'Sarah Alharbi' : 'Care Team Member',
+      senderName: currentUserName,
       senderRole: role || 'parent',
       senderAvatar: activeChild.avatar,
       contentEn: text,
       contentAr: text,
       timestamp: 'Just now',
+      at: new Date().toISOString(),
+      ...(attachment ? { attachment } : {}),
       goalTag: goalTag || 'General Progress',
-      isParent: true,
+      isParent: role === 'parent',
+      audience: 'family',
     };
 
     setContacts(prev => prev.map(c => {
       if (c.id === contactId) {
         return {
           ...c,
-          lastMessage: text,
+          lastMessage: text || (attachment?.kind === 'audio' ? '🎤 Voice message' : '📷 Photo'),
           timestamp: 'Just now',
-          messages: [...c.messages, newMsg]
+          messages: [...c.messages, newMsg],
+          // Offline demo (one device, both roles): the other side gets the unread mark.
+          // With a server, the unread mark is added on the receiving device when the message arrives.
+          ...(isServerMode ? {} : role === 'parent' ? { unreadStaff: (c.unreadStaff || 0) + 1 } : { unreadCount: (c.unreadCount || 0) + 1 }),
         };
       }
       return c;
     }));
 
-    showNotification('Message sent to specialist.');
+    showNotification(role === 'parent' ? 'Message sent to specialist.' : 'Message sent to parents.');
   };
+
+  const shareSoapNote: AppContextType['shareSoapNote'] = (contactIds, { text, childName, authorName, authorRole, tag = 'SOAP Note', childId }) => {
+    if (contactIds.length === 0) return;
+    const stamp = Date.now();
+    setContacts(prev => prev.map(c => {
+      if (!contactIds.includes(c.id)) return c;
+      // Sent into the author's own thread = to the parents; any other thread = colleagues only.
+      const toFamily = c.id === (OWN_THREAD[authorRole] ?? '');
+      const msg: MessageItem = {
+        id: `msg-soap-${stamp}-${c.id}-${Math.random().toString(36).slice(2, 6)}`,
+        childId: childId ?? selectedChildId,
+        senderName: authorName,
+        senderRole: authorRole,
+        senderAvatar: activeChild.avatar,
+        contentEn: text,
+        contentAr: text,
+        timestamp: 'Just now',
+        at: new Date().toISOString(),
+        goalTag: tag,
+        isParent: false,
+        audience: toFamily ? 'family' : 'staff',
+      };
+      return {
+        ...c,
+        lastMessage: `${tag} · ${childName}`,
+        timestamp: 'Just now',
+        // The mark goes to whoever receives it: parents for family messages, the thread's therapist for team ones.
+        ...(toFamily ? { unreadCount: (c.unreadCount || 0) + 1 } : { unreadStaff: (c.unreadStaff || 0) + 1 }),
+        messages: [...c.messages, msg],
+      };
+    }));
+    setNotifications(prev => [
+      {
+        id: `n-soap-${stamp}`,
+        title: `${tag} shared by ${authorName}`,
+        description: `${tag} for ${childName} was shared with ${contactIds.length} ${contactIds.length === 1 ? 'recipient' : 'recipients'}.`,
+        timestamp: 'Just now',
+        type: 'session',
+        read: false,
+      },
+      ...prev,
+    ]);
+    showNotification(
+      contactIds.length === 1 && contactIds[0] === (OWN_THREAD[authorRole] ?? '')
+        ? `${tag} sent to parents.`
+        : `${tag} shared with ${contactIds.length} ${contactIds.length === 1 ? 'recipient' : 'recipients'}.`
+    );
+  };
+
+  const uid = (p: string) => `${p}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+  const addTarget: AppContextType['addTarget'] = (t) => {
+    const id = uid('tgt');
+    const threshold = t.criterionThreshold ?? 90;
+    const next: Target = {
+      origin: 'Added by therapist',
+      ...t,
+      id,
+      criterionThreshold: threshold,
+      currentPerformance: t.baseline ?? 0,
+      lastThreeSessions: [0, 0, 0],
+      approvalStatus: org.requireGoalApproval ? 'awaiting_approval' : 'approved',
+      submittedAt: new Date().toISOString(),
+      history: [{ at: new Date().toISOString(), by: currentUserName, action: 'submitted' as const }],
+      suggestedAction: 'Collect baseline data',
+      suggestedNextStep: 'Run 3 baseline sessions before starting teaching',
+    };
+    setTargets(prev => [next, ...prev]);
+    showNotification(org.requireGoalApproval ? 'Target added. Awaiting supervisor approval.' : 'Target added.');
+    return id;
+  };
+
+  const updateTarget = (id: string, patch: Partial<Target>) => {
+    setTargets(prev => prev.map(t => {
+      if (t.id !== id) return t;
+      const resubmit = org.requireGoalApproval && (patch.masteryCriterion || patch.criterionThreshold);
+      const wasReturned = t.approvalStatus === 'needs_review' || t.approvalStatus === 'rejected';
+      const back = resubmit || (wasReturned && org.requireGoalApproval);
+      return {
+        ...t,
+        ...patch,
+        approvalStatus: back ? 'awaiting_approval' : t.approvalStatus,
+        ...(back ? { submittedAt: new Date().toISOString(), history: [...(t.history ?? []), { at: new Date().toISOString(), by: currentUserName, action: 'submitted' as const, note: wasReturned ? 'Resubmitted after feedback' : 'Criterion changed' }] } : {}),
+      };
+    }));
+    showNotification('Target updated.');
+  };
+
+  const deleteTarget = (id: string) => {
+    setTargets(prev => prev.filter(t => t.id !== id));
+    showNotification('Target removed.');
+  };
+
+  const addAbcRecord: AppContextType['addAbcRecord'] = (r) => {
+    setAbcRecords(prev => [{ ...r, id: uid('abc') }, ...prev]);
+    showNotification('ABC event logged.');
+  };
+  const deleteAbcRecord = (id: string) => setAbcRecords(prev => prev.filter(r => r.id !== id));
+
+  const saveBip: AppContextType['saveBip'] = (plan) => {
+    setBips(prev => {
+      const existing = prev.find(b => b.childId === plan.childId);
+      const next: BipPlan = { ...plan, version: (existing?.version ?? 0) + 1, updatedAt: new Date().toISOString() };
+      return [...prev.filter(b => b.childId !== plan.childId), next];
+    });
+    showNotification('Behavior Intervention Plan saved.');
+  };
+
+  const addReinforcer: AppContextType['addReinforcer'] = (r) =>
+    setReinforcers(prev => [...prev, { ...r, id: uid('rf'), lastAssessedAt: new Date().toISOString() }]);
+  const updateReinforcer = (id: string, patch: Partial<Reinforcer>) =>
+    setReinforcers(prev => prev.map(r => (r.id === id ? { ...r, ...patch, lastAssessedAt: new Date().toISOString() } : r)));
+  const removeReinforcer = (id: string) => setReinforcers(prev => prev.filter(r => r.id !== id));
+
+  const addHomeTask: AppContextType['addHomeTask'] = (t) => {
+    setHomeTasks(prev => [{ ...t, id: uid('ht'), done: false, doneAt: null, parentNote: '' }, ...prev]);
+    showNotification('Home task assigned to the family.');
+  };
+  const setHomeTaskDone = (id: string, done: boolean, parentNote?: string) =>
+    setHomeTasks(prev => prev.map(t => (t.id === id ? { ...t, done, doneAt: done ? new Date().toISOString() : null, parentNote: parentNote ?? t.parentNote } : t)));
+  const removeHomeTask = (id: string) => setHomeTasks(prev => prev.filter(t => t.id !== id));
+  const upsertHomeTask: AppContextType['upsertHomeTask'] = (t) => {
+    setHomeTasks(prev => [{ ...t, done: false, doneAt: null, parentNote: '' }, ...prev.filter(x => x.id !== t.id)]);
+    showNotification('Sent to the family as home practice.');
+  };
+
+  const saveWeeklySet = (set: WeeklyQuestionSet) =>
+    setWeeklySets(prev => (prev.some(x => x.id === set.id) ? prev.map(x => (x.id === set.id ? set : x)) : [set, ...prev]));
+  const deleteWeeklySet = (id: string) => setWeeklySets(prev => prev.filter(x => x.id !== id));
+
+  const addSentenceTask = (childId: string, target: string, image?: string) =>
+    setSentenceTasks(prev => [{ id: uid('sent'), childId, target: target.trim(), createdAt: new Date().toISOString(), attempts: [], ...(image ? { image } : {}) }, ...prev]);
+  const addSentenceAttempt: AppContextType['addSentenceAttempt'] = (taskId, attempt) =>
+    setSentenceTasks(prev =>
+      prev.map(t => (t.id === taskId ? { ...t, attempts: [...t.attempts, { ...attempt, id: uid('att'), at: new Date().toISOString() }] } : t))
+    );
+  const deleteSentenceTask = (id: string) => setSentenceTasks(prev => prev.filter(t => t.id !== id));
+
+  const addArticulationLog: AppContextType['addArticulationLog'] = (l) =>
+    setArticulationLogs(prev => [{ ...l, id: uid('art'), at: new Date().toISOString() }, ...prev]);
+  const deleteArticulationLog = (id: string) => setArticulationLogs(prev => prev.filter(l => l.id !== id));
+
+  const addAudioClip: AppContextType['addAudioClip'] = (c) => setAudioClips(prev => [{ ...c, id: uid('aud'), at: new Date().toISOString() }, ...prev]);
+  const deleteAudioClip = (id: string) => setAudioClips(prev => prev.filter(c => c.id !== id));
+
+  const addChecklistItem = (childId: string, name: string) =>
+    setOtChecklist(prev => [...prev, { id: uid('chk'), childId, name: name.trim(), score: null, history: [] }]);
+  const scoreChecklistItem = (id: string, score: ChecklistScore | null) =>
+    setOtChecklist(prev =>
+      prev.map(i => (i.id === id ? { ...i, score, history: score ? [...i.history, { at: new Date().toISOString(), score }] : i.history } : i))
+    );
+  const deleteChecklistItem = (id: string) => setOtChecklist(prev => prev.filter(i => i.id !== id));
+
+  const stepsFromText = (lines: string[], keep: TaskAnalysis['steps'] = []) =>
+    lines.map((text, i) => ({ id: keep[i]?.text === text ? keep[i].id : uid('stp'), text }));
+
+  const addTaskAnalysis: AppContextType['addTaskAnalysis'] = (t) => {
+    const id = uid('task');
+    setOtTasks(prev => [...prev, { id, childId: t.childId, title: t.title.trim(), domain: t.domain, chaining: t.chaining, steps: stepsFromText(t.steps), levels: {}, history: [], createdAt: new Date().toISOString() }]);
+    return id;
+  };
+  const updateTaskAnalysis: AppContextType['updateTaskAnalysis'] = (id, patch) =>
+    setOtTasks(prev =>
+      prev.map(x => {
+        if (x.id !== id) return x;
+        const { steps, ...rest } = patch;
+        if (!steps) return { ...x, ...rest };
+        // Steps that were not touched keep their id (and so their scores); edited or new ones start unscored.
+        const next = stepsFromText(steps, x.steps);
+        const levels: TaskAnalysis['levels'] = {};
+        for (const s of next) if (x.levels[s.id]) levels[s.id] = x.levels[s.id];
+        return { ...x, ...rest, steps: next, levels };
+      })
+    );
+  const setStepLevel = (taskId: string, stepId: string, level: StepLevel | null) =>
+    setOtTasks(prev =>
+      prev.map(x => {
+        if (x.id !== taskId) return x;
+        const levels = { ...x.levels };
+        if (level) levels[stepId] = level;
+        else delete levels[stepId];
+        return { ...x, levels };
+      })
+    );
+  const closeTaskSession = (childId: string) =>
+    setOtTasks(prev =>
+      prev.map(x => {
+        if (x.childId !== childId) return x;
+        const scored = x.steps.filter(s => x.levels[s.id]);
+        if (scored.length === 0) return x;
+        const independent = x.steps.filter(s => x.levels[s.id] === 'Independent').length;
+        const total = x.steps.length;
+        return { ...x, levels: {}, history: [...x.history, { at: new Date().toISOString(), percent: Math.round((independent / total) * 100), independent, total }] };
+      })
+    );
+  const deleteTaskAnalysis = (id: string) => setOtTasks(prev => prev.filter(x => x.id !== id));
+
+  const addSensoryLog: AppContextType['addSensoryLog'] = (l) => setOtSensory(prev => [{ ...l, id: uid('sen'), at: new Date().toISOString() }, ...prev]);
+  const deleteSensoryLog = (id: string) => setOtSensory(prev => prev.filter(x => x.id !== id));
+
+  const markContactRead = (contactId: string) =>
+    setContacts(prev =>
+      prev.map(c => {
+        if (c.id !== contactId) return c;
+        // Each side clears only its own unread mark.
+        if (role === 'parent') return c.unreadCount ? { ...c, unreadCount: 0 } : c;
+        return c.unreadStaff ? { ...c, unreadStaff: 0 } : c;
+      })
+    );
+
+  /* ---------------- server sync (only when signed in to a server) ---------------- */
+  const syncCols: SyncCol[] = [
+    { col: 'targets', items: targets, apply: fn => setTargets(fn as (p: Target[]) => Target[]), rid: (x: Target) => x.id },
+    { col: 'savedSessions', items: savedSessions, apply: fn => setSavedSessions(fn as (p: SavedSession[]) => SavedSession[]), rid: (x: SavedSession) => x.id },
+    { col: 'abcRecords', items: abcRecords, apply: fn => setAbcRecords(fn as (p: ABCRecord[]) => ABCRecord[]), rid: (x: ABCRecord) => x.id },
+    { col: 'bips', items: bips, apply: fn => setBips(fn as (p: BipPlan[]) => BipPlan[]), rid: (x: BipPlan) => x.childId },
+    { col: 'reinforcers', items: reinforcers, apply: fn => setReinforcers(fn as (p: Reinforcer[]) => Reinforcer[]), rid: (x: Reinforcer) => x.id },
+    { col: 'homeTasks', items: homeTasks, apply: fn => setHomeTasks(fn as (p: HomeTask[]) => HomeTask[]), rid: (x: HomeTask) => x.id },
+    { col: 'weeklyQuestions', items: weeklySets, apply: fn => setWeeklySets(fn as (p: WeeklyQuestionSet[]) => WeeklyQuestionSet[]), rid: (x: WeeklyQuestionSet) => x.id },
+    { col: 'articulationLogs', items: articulationLogs, apply: fn => setArticulationLogs(fn as (p: ArticulationLog[]) => ArticulationLog[]), rid: (x: ArticulationLog) => x.id },
+    { col: 'audioClips', items: audioClips, apply: fn => setAudioClips(fn as (p: AudioClip[]) => AudioClip[]), rid: (x: AudioClip) => x.id },
+    { col: 'otTasks', items: otTasks, apply: fn => setOtTasks(fn as (p: TaskAnalysis[]) => TaskAnalysis[]), rid: (x: TaskAnalysis) => x.id },
+    { col: 'otSensory', items: otSensory, apply: fn => setOtSensory(fn as (p: SensoryLog[]) => SensoryLog[]), rid: (x: SensoryLog) => x.id },
+    { col: 'otChecklist', items: otChecklist, apply: fn => setOtChecklist(fn as (p: ChecklistItem[]) => ChecklistItem[]), rid: (x: ChecklistItem) => x.id },
+    ...supervision.syncCols,
+    { col: 'sentenceTasks', items: sentenceTasks, apply: fn => setSentenceTasks(fn as (p: SentenceTask[]) => SentenceTask[]), rid: (x: SentenceTask) => x.id },
+  ];
+
+  // Messages written on this device, waiting to reach the server (seed messages never are).
+  const outMessages = useMemo<OutMessage[]>(
+    () =>
+      contacts.flatMap(c =>
+        c.messages
+          .filter(m => m.id.startsWith('msg-'))
+          .map(m => ({
+            id: m.id,
+            childId: m.childId,
+            payload: { id: m.id, contactId: c.id, contentEn: m.contentEn, contentAr: m.contentAr, goalTag: m.goalTag, audience: m.audience ?? 'family', ...(m.attachment ? { attachment: m.attachment } : {}) },
+          }))
+      ),
+    [contacts]
+  );
+
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
+
+  const handleRemoteMessages = (msgs: RemoteMessage[], first: boolean) => {
+    if (msgs.length === 0) return;
+    const fmt = (iso: string) => {
+      const d = new Date(iso);
+      return d.toDateString() === new Date().toDateString()
+        ? d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+        : d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+    };
+    const known = new Set(contactsRef.current.flatMap(c => c.messages.map(m => m.id)));
+    const fresh = msgs
+      .filter(m => !known.has(m.rid))
+      .map(m => ({
+        contactId: String(m.data.contactId),
+        mine: m.data.senderId === serverUser?.id,
+        item: {
+          id: m.rid,
+          childId: m.childId,
+          senderName: m.data.senderName ?? 'Care team',
+          senderRole: (m.data.senderRole ?? 'parent') as RoleType,
+          senderAvatar: '',
+          contentEn: m.data.contentEn ?? '',
+          contentAr: m.data.contentAr ?? m.data.contentEn ?? '',
+          timestamp: m.data.createdAt ? fmt(m.data.createdAt) : '',
+          at: m.data.createdAt ?? undefined,
+          ...(m.data.attachment ? { attachment: m.data.attachment } : {}),
+          goalTag: m.data.goalTag,
+          isParent: m.data.senderRole === 'parent',
+          audience: m.data.audience === 'staff' ? 'staff' : 'family',
+        } as MessageItem,
+      }));
+    if (fresh.length === 0) return;
+
+    setContacts(prev =>
+      prev.map(c => {
+        const mine = fresh.filter(f => f.contactId === c.id && !c.messages.some(m => m.id === f.item.id));
+        if (mine.length === 0) return c;
+        const last = mine[mine.length - 1].item;
+        return {
+          ...c,
+          messages: [...c.messages, ...mine.map(f => f.item)],
+          lastMessage: last.contentEn.split('\n')[0].slice(0, 60) || (last.attachment?.kind === 'audio' ? '🎤 Voice message' : '📷 Photo'),
+          timestamp: last.timestamp,
+          ...(first
+            ? {}
+            : role === 'parent'
+            ? { unreadCount: (c.unreadCount || 0) + mine.filter(f => !f.mine).length }
+            : { unreadStaff: (c.unreadStaff || 0) + mine.filter(f => !f.mine).length }),
+        };
+      })
+    );
+
+    if (!first) {
+      const theirs = fresh.filter(f => !f.mine);
+      if (theirs.length > 0) {
+        const latest = theirs[theirs.length - 1].item;
+        setNotifications(prev => [
+          { id: `n-in-${latest.id}`, title: `New message from ${latest.senderName}`, description: latest.contentEn.split('\n')[0].slice(0, 90), timestamp: 'Just now', type: 'message', read: false },
+          ...prev,
+        ]);
+        showNotification(`New message from ${latest.senderName}`);
+      }
+    }
+  };
+
+  useServerSync({
+    enabled: isServerMode,
+    token: auth.token,
+    userId: serverUser?.id ?? null,
+    role,
+    cols: syncCols,
+    messages: outMessages,
+    onRemoteMessages: handleRemoteMessages,
+    onUnauthorized: () => auth.logout(),
+    onOnline: online => setIsOffline(!online),
+  });
 
   const markNotificationAsRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
@@ -413,12 +1161,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addSessionResult,
         addTeacherObservation,
         approveTarget,
+        requestGoalChanges,
+        reviewSession,
+        orgName,
+        setOrgName,
+        org,
+        setOrgSettings,
+        ...(({ syncCols: _s, ...rest }) => rest)(supervision),
         sendMessage,
         triggerConfetti,
         notification,
         showNotification,
 
         contacts,
+        shareSoapNote,
         activeContactId,
         setActiveContactId,
         sendContactMessage,
@@ -432,6 +1188,61 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         isSettingsOpen,
         setIsSettingsOpen,
+
+        getSessionPlan,
+        saveSessionPlan,
+        savedSessions,
+        saveSession,
+
+        isServerMode,
+        currentUserName,
+        logout: auth.logout,
+        inviteCodes: auth.children_,
+        markContactRead,
+
+        addTarget,
+        updateTarget,
+        deleteTarget,
+        abcRecords,
+        addAbcRecord,
+        deleteAbcRecord,
+        bips,
+        saveBip,
+        reinforcers,
+        addReinforcer,
+        updateReinforcer,
+        removeReinforcer,
+        homeTasks,
+        addHomeTask,
+        setHomeTaskDone,
+        removeHomeTask,
+        upsertHomeTask,
+        weeklySets,
+        saveWeeklySet,
+        deleteWeeklySet,
+        sentenceTasks,
+        addSentenceTask,
+        addSentenceAttempt,
+        deleteSentenceTask,
+        articulationLogs,
+        addArticulationLog,
+        deleteArticulationLog,
+        audioClips,
+        addAudioClip,
+        deleteAudioClip,
+        otChecklist,
+        addChecklistItem,
+        scoreChecklistItem,
+        deleteChecklistItem,
+        otTasks,
+        addTaskAnalysis,
+        updateTaskAnalysis,
+        setStepLevel,
+        closeTaskSession,
+        deleteTaskAnalysis,
+        otSensory,
+        addSensoryLog,
+        deleteSensoryLog,
       }}
     >
       {children}

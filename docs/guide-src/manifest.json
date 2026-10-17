@@ -1,0 +1,678 @@
+{
+ "launch": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "parent-home": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "parent-progress": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "parent-targets": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "parent-sessions": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "parent-messages": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "parent-chat": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "parent-settings": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "behavior-today": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "behavior-today-2": {
+  "placed": [
+   0
+  ]
+ },
+ "behavior-plan": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "behavior-targets": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "behavior-graphs": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "behavior-bip": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "behavior-bip-plan": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "behavior-notes": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "speech-today": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "speech-plan": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "speech-drill": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "speech-goals": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "speech-practice": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "speech-graphs": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "speech-family": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "speech-hometasks": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "ot-today": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "ot-plan": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "ot-tools": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "ot-checklists": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "ot-goals": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "ot-family": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "remedial-today": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "remedial-goals": {
+  "placed": [
+   0
+  ]
+ },
+ "remedial-graphs": {
+  "placed": [
+   0
+  ]
+ },
+ "teacher-today": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "teacher-today-2": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "teacher-students": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "teacher-notes": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "teacher-family": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "sup-children": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8
+  ]
+ },
+ "sup-goal": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "sup-team-request": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "sup-staff": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "sup-observe": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "sup-reports": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "sup-reports-2": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "sup-templates": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "admin-portals": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "admin-case": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "admin-speech": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "admin-add-staff": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "admin-centers": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "admin-billing": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "admin-settings": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "sup-review": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7
+  ]
+ },
+ "sup-review-sessions": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "sup-session-open": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "admin-home": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "child-mode": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "sup-home-practice": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "admin-login-ready": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "sup-add-goal": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "signin": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "register": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "arabic-home": {
+  "placed": []
+ },
+ "parent-target-detail": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ]
+ },
+ "parent-notifications": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "behavior-add-target": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "behavior-bip-function": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "behavior-bip-reinforcers": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "behavior-bip-home": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "speech-add-goal": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "speech-practice-sentence": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "speech-practice-artic": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "speech-practice-rec": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "speech-notes": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "remedial-notes": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "remedial-family": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ },
+ "sup-case-notes": {
+  "placed": [
+   0,
+   1,
+   2,
+   3
+  ]
+ },
+ "admin-audit": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "admin-edit-person": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6
+  ]
+ },
+ "admin-plan": {
+  "placed": [
+   0,
+   1,
+   2,
+   3,
+   4
+  ]
+ },
+ "admin-roles": {
+  "placed": [
+   0,
+   1
+  ]
+ },
+ "ot-notes": {
+  "placed": [
+   0,
+   1,
+   2
+  ]
+ }
+}

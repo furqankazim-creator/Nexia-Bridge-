@@ -6,3 +6,15 @@ coverage/
 *.log
 .env*
 !.env.example
+
+# Expo
+.expo/
+expo-env.d.ts
+
+# Server
+server/.data/
+server/.mongodb-binaries/
+
+docs/guide-src/node_modules/
+docs/guide-src/guide.html
+dist-mobile/

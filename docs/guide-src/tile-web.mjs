@@ -1,0 +1,11 @@
+import fs from 'node:fs';
+import puppeteer from 'puppeteer-core';
+import { CHROME } from './capture-lib.mjs';
+const [out, ...ids] = process.argv.slice(2);
+const b = await puppeteer.launch({ executablePath: CHROME, headless: 'new' });
+const p = await b.newPage();
+await p.setViewport({ width: 1900, height: 1000 });
+const html = `<body style="margin:0;background:#777;display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px">${ids.map((id) => `<div style="color:#fff;font:bold 12px sans-serif">${id}<br><img src="data:image/png;base64,${fs.readFileSync(`../screenshots/${id}.png`).toString('base64')}" style="width:100%;display:block"></div>`).join('')}</body>`;
+await p.setContent(html);
+await p.screenshot({ path: out, fullPage: true });
+await b.close();
