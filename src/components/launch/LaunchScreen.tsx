@@ -32,10 +32,7 @@ export const LaunchScreen: React.FC = () => {
       {/* Main Top Header and Brand */}
       <div className="pt-2 relative z-10">
         {/* Top bar with quick language and theme switcher */}
-        <div className="flex items-center justify-between mb-4 pb-2 border-b border-[#E8E2D9]/70 dark:border-[#38325E]/70">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-[#4F46E5] bg-indigo-50 dark:bg-indigo-950 px-2.5 py-1 rounded-full">
-            All 8 Portals Ready
-          </span>
+        <div className="flex items-center justify-end mb-4 pb-2 border-b border-[#E8E2D9]/70 dark:border-[#38325E]/70">
           <div className="flex items-center gap-1.5">
             <button
               onClick={toggleLanguage}
