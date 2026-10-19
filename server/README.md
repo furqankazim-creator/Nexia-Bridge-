@@ -19,7 +19,7 @@ Production: set `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET` (32+ random c
 
 * Staff (therapist, teacher, supervisor...) register with the **staff invite code**.
 * Parents register with their **child's invite code** (staff can see the codes in the app:
-  BIP tab → Parent chat). A parent can only ever see that child.
+  Family tab → Parent chat). A parent can only ever see that child.
 
 ## What each role can do
 
