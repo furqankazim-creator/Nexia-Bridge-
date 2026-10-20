@@ -271,6 +271,12 @@ function saveJson(key: string, value: unknown) {
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// The practice version remembers the chosen portal for this browser tab, so a refresh does not send you back to the start.
+const DEMO_ROLE_KEY = 'nexia.demoRole';
+const readDemoRole = (): RoleType | null => {
+  try { return (sessionStorage.getItem(DEMO_ROLE_KEY) as RoleType | null) || null; } catch { return null; }
+};
+
 const DEFAULT_TAB: Record<RoleType, string> = {
   parent: 'Home', behavior: 'Today', speech: 'Today', remedial: 'Today', teacher: 'Today', ot: 'Today', supervisor: 'Review', admin: 'Home',
 };
@@ -282,9 +288,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Server mode keeps nothing in localStorage: the server is the source of truth.
   const load = <T,>(key: string, fallback: T): T => (isServerMode ? fallback : loadJson<T>(key, fallback));
 
-  const [role, setRoleState] = useState<RoleType | null>(serverUser?.role ?? null);
+  const [role, setRoleState] = useState<RoleType | null>(serverUser?.role ?? readDemoRole());
   const [selectedChildId, setSelectedChildId] = useState<string>(serverUser ? (auth.children_[0]?.id ?? serverUser.childIds[0] ?? '') : 'child-lama');
-  const [activeTab, setActiveTabState] = useState<string>(serverUser ? DEFAULT_TAB[serverUser.role] : 'Home');
+  const [activeTab, setActiveTabState] = useState<string>(DEFAULT_TAB[serverUser?.role ?? readDemoRole() ?? 'parent']);
   const [language, setLanguage] = useState<'en' | 'ar'>('en');
   const [darkMode, setDarkMode] = useState<boolean>(false);
   const [isOffline, setIsOffline] = useState<boolean>(false);
@@ -407,6 +413,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       document.body.classList.remove('dark');
     }
   }, [darkMode]);
+
+  useEffect(() => {
+    if (isServerMode) return;
+    try { if (role) sessionStorage.setItem(DEMO_ROLE_KEY, role); else sessionStorage.removeItem(DEMO_ROLE_KEY); } catch { /* private mode */ }
+  }, [role, isServerMode]);
 
   // Set default tabs whenever role changes
   const setRole = (newRole: RoleType | null) => {

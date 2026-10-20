@@ -16,8 +16,10 @@ export async function open(base = 'http://127.0.0.1:3120/', { keepLaunch = false
   await w(1600);
   // The app now opens on the welcome screen: pick a portal so the header exists, unless the shot wants the welcome screen.
   if (!keepLaunch) {
-    await p.evaluate(() => [...document.querySelectorAll('button')].find((x) => x.innerText.trim() === 'Parent')?.click());
-    await w(900);
+    await p.evaluate(() => [...document.querySelectorAll('button')].find((x) => x.innerText.includes('Parent or caregiver'))?.click());
+    await w(500);
+    await p.evaluate(() => [...document.querySelectorAll('button')].filter((x) => x.innerText.trim() === 'Sign in').pop()?.click());
+    await w(1200);
   }
   return { b, p };
 }

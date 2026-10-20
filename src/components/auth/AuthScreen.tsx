@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Activity, ArrowLeft, BookOpen, Eye, EyeOff, Heart, KeyRound, Loader2, Lock, Mail, ShieldCheck, User, Users } from 'lucide-react';
 import { useAuth, RoleMismatch } from '../../context/AuthContext';
-import { getApiUrl } from '../../api/client';
+import { getApiUrl, serverConfigured } from '../../api/client';
 import type { AuthUser } from '../../api/client';
 
 type Role = AuthUser['role'];
@@ -45,16 +45,19 @@ interface AuthScreenProps {
   role?: Role;
   initialMode?: 'login' | 'register';
   onBack?: () => void;
+  /** Practice version: the same sign-in page, with a sample account already filled in. */
+  demo?: { onEnter: (role: Role) => void };
 }
 
-export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole, initialMode = 'login', onBack }) => {
-  const { login, register, useDemo, gate } = useAuth();
+export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole, initialMode = 'login', onBack, demo }) => {
+  const { login, register, useDemo, leaveDemo, gate } = useAuth();
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const allowed = group ? GROUP_ROLES[group] : ROLES.map((r) => r.id);
   const [role, setRole] = useState<Role>(pickedRole && allowed.includes(pickedRole) ? pickedRole : allowed[0]);
+  const demoEmail = `${role === 'parent' ? 'sarah' : role}@demo.nexia`;
   const [code, setCode] = useState('');
   const [url, setUrl] = useState(getApiUrl());
   const [showServer, setShowServer] = useState(false);
@@ -64,9 +67,13 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole,
 
   if (gate === 'checking') {
     return (
-      <div className="min-h-full flex flex-col items-center justify-center gap-3 p-6">
-        <Loader2 className="w-8 h-8 animate-spin text-[#4F46E5]" />
-        <p className="text-sm text-[#6B6785] dark:text-[#A5A0C2]">Connecting…</p>
+      <div className="flex flex-col items-center justify-center gap-4 p-6 bg-[#FBF7F2]" style={{ minHeight: 'var(--app-h, 100vh)' }}>
+        <div className="w-14 h-14 rounded-2xl bg-[#4F46E5] flex items-center justify-center text-white shadow-warm">
+          <svg viewBox="0 0 24 24" fill="none" className="w-8 h-8 stroke-current stroke-2"><path strokeLinecap="round" strokeLinejoin="round" d="M3 17C6 11 10 8 12 8C14 8 18 11 21 17M12 8V20M6 14C8 12 10 11 12 11C14 11 16 12 18 14" /></svg>
+        </div>
+        <p className="font-heading text-xl font-bold text-[#1F1B3A]">Nexia Bridge</p>
+        <Loader2 className="w-5 h-5 animate-spin text-[#4F46E5]" />
+        <p className="text-xs text-[#6B6785]">Connecting…</p>
       </div>
     );
   }
@@ -74,6 +81,11 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole,
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (demo) {
+      setBusy(true);
+      window.setTimeout(() => demo.onEnter(role), 450); // a short pause so it feels like signing in
+      return;
+    }
     if (!url.trim()) {
       setShowServer(true);
       setError('Enter the server address.');
@@ -150,17 +162,23 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole,
         {/* The form */}
         <div className="mt-6 md:mt-0 flex-1 md:flex-none flex flex-col">
           <div className="bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-3xl shadow-card p-5 sm:p-6 space-y-4">
-            <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-[#F4EEE6] dark:bg-[#252044]" role="tablist">
+            {demo && <p className="text-xs rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-[#4338CA] dark:text-indigo-200 border border-indigo-100 dark:border-indigo-900 px-3 py-2">Practice version. A sample account is filled in for you. Nothing is saved to a server.</p>}
+            {!demo && <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-[#F4EEE6] dark:bg-[#252044]" role="tablist">
               {(['login', 'register'] as const).map((m) => (
                 <button key={m} type="button" role="tab" aria-selected={mode === m} onClick={() => { setMode(m); setError(''); }}
                   className={`py-2.5 rounded-xl text-sm font-semibold transition ${mode === m ? 'bg-white dark:bg-[#1F1B3A] shadow-card text-[#1F1B3A] dark:text-white' : 'text-[#6B6785] dark:text-[#A5A0C2]'}`}>
                   {m === 'login' ? 'Sign in' : 'Create account'}
                 </button>
               ))}
-            </div>
+            </div>}
 
             <form onSubmit={submit} className="space-y-3" noValidate>
-              {mode === 'register' && (
+              {demo && allowed.length > 1 && (
+                <select aria-label="I am a" value={role} onChange={(e) => setRole(e.target.value as Role)} className={`${INPUT} ps-4`}>
+                  {ROLES.filter((r) => allowed.includes(r.id)).map((r) => <option key={r.id} value={r.id}>{r.label}</option>)}
+                </select>
+              )}
+              {mode === 'register' && !demo && (
                 <>
                   {field(User, <input aria-label="Full name" autoComplete="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className={INPUT} />)}
                   {allowed.length > 1 && (
@@ -170,9 +188,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole,
                   )}
                 </>
               )}
-              {field(Mail, <input aria-label="Email" type="email" inputMode="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={INPUT} />)}
+              {field(Mail, <input aria-label="Email" type="email" inputMode="email" autoComplete="email" value={demo ? demoEmail : email} readOnly={!!demo} onChange={(e) => setEmail(e.target.value)} placeholder="Email" className={INPUT} />)}
               {field(Lock,
-                <input aria-label="Password" type={showPw ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'register' ? 'Password (8+ characters)' : 'Password'} className={`${INPUT} pe-12`} />,
+                <input aria-label="Password" type={showPw ? 'text' : 'password'} autoComplete={mode === 'login' ? 'current-password' : 'new-password'} value={demo ? 'demo-password' : password} readOnly={!!demo} onChange={(e) => setPassword(e.target.value)} placeholder={mode === 'register' ? 'Password (8+ characters)' : 'Password'} className={`${INPUT} pe-12`} />,
                 <button type="button" onClick={() => setShowPw((v) => !v)} aria-label={showPw ? 'Hide password' : 'Show password'} className="absolute top-1/2 -translate-y-1/2 end-3 p-1.5 text-[#9A97B0] hover:text-[#4F46E5]">
                   {showPw ? <EyeOff className="w-[18px] h-[18px]" /> : <Eye className="w-[18px] h-[18px]" />}
                 </button>
@@ -194,7 +212,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole,
               </button>
             </form>
 
-            {mode === 'login' && <p className="text-xs text-center text-[#6B6785] dark:text-[#A5A0C2]">Forgot your password? Ask your clinic administrator for help.</p>}
+            {mode === 'login' && !demo && <p className="text-xs text-center text-[#6B6785] dark:text-[#A5A0C2]">Forgot your password? Ask your clinic administrator for help.</p>}
           </div>
 
           <div className="text-center space-y-2 mt-5">
@@ -202,6 +220,9 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole,
               <Lock className="w-3.5 h-3.5 text-[#10B981] shrink-0" />
               <span>Parents decide which professionals can see their child’s information.</span>
             </div>
+            {demo ? (
+              serverConfigured() && <button type="button" onClick={leaveDemo} className="text-sm font-semibold text-[#4F46E5] dark:text-indigo-300 underline">Use the real system instead</button>
+            ) : (<>
             <button type="button" onClick={() => setShowServer((s) => !s)} className="text-xs text-[#6B6785] dark:text-[#A5A0C2] underline">
               {showServer ? 'Hide server address' : 'Server address'}
             </button>
@@ -212,6 +233,7 @@ export const AuthScreen: React.FC<AuthScreenProps> = ({ group, role: pickedRole,
               <button type="button" onClick={useDemo} className="text-sm font-semibold text-[#4F46E5] dark:text-indigo-300 underline">Try the offline demo</button>
               <p className="text-[11px] text-[#6B6785] dark:text-[#A5A0C2] mt-1">The demo runs on this device only and is not shared with anyone.</p>
             </div>
+            </>)}
           </div>
         </div>
       </div>

@@ -18,9 +18,11 @@ interface LaunchProps {
   onChoose?: (r: RoleType) => void;
   onSignIn?: () => void;
   onCreate?: () => void;
+  /** Practice version: no account creation. */
+  demo?: boolean;
 }
 
-export const LaunchScreen: React.FC<LaunchProps> = ({ onChoose, onSignIn, onCreate }) => {
+export const LaunchScreen: React.FC<LaunchProps> = ({ onChoose, onSignIn, onCreate, demo }) => {
   const { setRole, language, toggleLanguage, darkMode, toggleDarkMode } = useApp();
   const [subPicker, setSubPicker] = useState<'therapist' | 'teacher' | 'supervisor_admin' | null>(null);
 
@@ -353,12 +355,12 @@ export const LaunchScreen: React.FC<LaunchProps> = ({ onChoose, onSignIn, onCrea
             <span>{isAr ? 'تسجيل الدخول السريع' : 'Sign in'}</span>
           </button>
 
-          <button
+          {(!onChoose || onCreate) && <button
             onClick={() => (onCreate ? onCreate() : selectRole('parent'))}
             className="w-full py-3.5 px-6 rounded-2xl bg-white dark:bg-[#1F1B3A] border-2 border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-white font-heading font-semibold text-base hover:bg-[#F4EEE6] dark:hover:bg-[#252044] transition flex items-center justify-center gap-2"
           >
             <span>{isAr ? 'إنشاء حساب جديد' : 'Create an account'}</span>
-          </button>
+          </button>}
         </div>
 
         {/* Client's exact signature footer line */}
