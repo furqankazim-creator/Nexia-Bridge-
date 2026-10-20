@@ -6,7 +6,8 @@
 import React, { useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { AuthProvider, useAuth } from './context/AuthContext';
-import { AuthScreen } from './components/auth/AuthScreen';
+import { AuthScreen, groupOf, type RoleGroup } from './components/auth/AuthScreen';
+import type { RoleType } from './types';
 import { Header } from './components/common/Header';
 import { BottomTabBar } from './components/common/BottomTabBar';
 import { LaunchScreen } from './components/launch/LaunchScreen';
@@ -81,10 +82,37 @@ const MainContent: React.FC = () => {
   );
 };
 
+/** The real system, signed out: the welcome page first, then the sign-in page for the portal that was chosen. */
+function SignedOut() {
+  type Step = { screen: 'landing' } | { screen: 'auth'; mode: 'login' | 'register'; group?: RoleGroup; role?: RoleType };
+  const [step, setStep] = useState<Step>({ screen: 'landing' });
+  const toLanding = () => setStep({ screen: 'landing' });
+  return (
+    // The provider only supplies language and dark mode here; nothing is signed in yet.
+    <AppProvider key="signed-out">
+      <div className="app-backdrop">
+        <div className="app-frame text-[#1F1B3A] dark:text-white font-sans">
+          <div className="app-scroll">
+            {step.screen === 'landing' ? (
+              <LaunchScreen
+                onChoose={(r) => setStep({ screen: 'auth', mode: 'login', group: groupOf(r), role: r })}
+                onSignIn={() => setStep({ screen: 'auth', mode: 'login' })}
+                onCreate={() => setStep({ screen: 'auth', mode: 'register' })}
+              />
+            ) : (
+              <AuthScreen key={`${step.mode}-${step.role ?? ''}`} initialMode={step.mode} group={step.group} role={step.role} onBack={toLanding} />
+            )}
+          </div>
+        </div>
+      </div>
+    </AppProvider>
+  );
+}
+
 function Gate() {
   const auth = useAuth();
 
-  if (auth.gate === 'checking' || auth.gate === 'login') {
+  if (auth.gate === 'checking') {
     return (
       <div className="app-backdrop">
         <div className="app-frame text-[#1F1B3A] font-sans">
@@ -95,6 +123,7 @@ function Gate() {
       </div>
     );
   }
+  if (auth.gate === 'login') return <SignedOut />;
   // Keyed by account so signing out / in as someone else starts from a clean state.
   return (
     <AppProvider key={auth.user?.id ?? 'demo'}>

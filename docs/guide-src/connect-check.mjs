@@ -25,6 +25,8 @@ async function login(email, role) {
   await p.setViewport({ width: role === 'supervisor' || role === 'admin' ? 1280 : 390, height: role === 'supervisor' || role === 'admin' ? 860 : 1000, deviceScaleFactor: 1 });
   await p.goto(WEB); await w(1500);
   await p.evaluate(() => localStorage.clear()); await p.reload(); await w(1500);
+  // The welcome page comes first: its Sign in button opens the sign-in form.
+  await p.evaluate(() => [...document.querySelectorAll('button')].find((b) => b.innerText.trim() === 'Sign in').click()); await w(500);
   await fill(p, 'Email', email); await fill(p, 'Password', 'password123');
   await p.evaluate(() => [...document.querySelectorAll('button')].filter((b) => b.innerText.trim() === 'Sign in').pop().click());
   await w(3500);

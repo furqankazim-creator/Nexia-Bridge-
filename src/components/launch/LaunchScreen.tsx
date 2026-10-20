@@ -13,15 +13,20 @@ import {
   Lock
 } from 'lucide-react';
 
-export const LaunchScreen: React.FC = () => {
+interface LaunchProps {
+  /** Real system: a role card leads to that role's sign-in page instead of opening a practice portal. */
+  onChoose?: (r: RoleType) => void;
+  onSignIn?: () => void;
+  onCreate?: () => void;
+}
+
+export const LaunchScreen: React.FC<LaunchProps> = ({ onChoose, onSignIn, onCreate }) => {
   const { setRole, language, toggleLanguage, darkMode, toggleDarkMode } = useApp();
   const [subPicker, setSubPicker] = useState<'therapist' | 'teacher' | 'supervisor_admin' | null>(null);
 
   const isAr = language === 'ar';
 
-  const selectRole = (r: RoleType) => {
-    setRole(r);
-  };
+  const selectRole = (r: RoleType) => (onChoose ? onChoose(r) : setRole(r));
 
   return (
     <div className="min-h-full bg-[#FBF7F2] dark:bg-[#14122B] flex flex-col justify-between p-4 sm:p-6 md:p-10 pt-[calc(env(safe-area-inset-top)+1rem)] pb-[calc(env(safe-area-inset-bottom)+1rem)] max-w-md md:max-w-5xl w-full mx-auto relative overflow-hidden transition-colors">
@@ -49,7 +54,8 @@ export const LaunchScreen: React.FC = () => {
           </div>
         </div>
 
-        {/* Quick 1-Tap Portal Preview Bar */}
+        {/* Quick 1-Tap Portal Preview Bar (practice version only) */}
+        {!onChoose && (
         <div className="mb-4">
           <p className="text-[10px] font-semibold uppercase tracking-wider text-[#6B6785] dark:text-[#8E8AAB] mb-1.5">
             Instant Preview Portal:
@@ -74,6 +80,7 @@ export const LaunchScreen: React.FC = () => {
             ))}
           </div>
         </div>
+        )}
 
         {/* Brand Logo & Name */}
         <div className="flex items-center gap-2.5 mb-6">
@@ -340,14 +347,14 @@ export const LaunchScreen: React.FC = () => {
         {/* Sign In & Create Account */}
         <div className="space-y-2.5">
           <button
-            onClick={() => selectRole('parent')}
+            onClick={() => (onSignIn ? onSignIn() : selectRole('parent'))}
             className="w-full py-3.5 px-6 rounded-2xl bg-[#4F46E5] hover:bg-[#4338CA] text-white font-heading font-semibold text-base shadow-warm active:scale-[0.99] transition flex items-center justify-center gap-2"
           >
             <span>{isAr ? 'تسجيل الدخول السريع' : 'Sign in'}</span>
           </button>
 
           <button
-            onClick={() => selectRole('parent')}
+            onClick={() => (onCreate ? onCreate() : selectRole('parent'))}
             className="w-full py-3.5 px-6 rounded-2xl bg-white dark:bg-[#1F1B3A] border-2 border-[#E8E2D9] dark:border-[#38325E] text-[#1F1B3A] dark:text-white font-heading font-semibold text-base hover:bg-[#F4EEE6] dark:hover:bg-[#252044] transition flex items-center justify-center gap-2"
           >
             <span>{isAr ? 'إنشاء حساب جديد' : 'Create an account'}</span>

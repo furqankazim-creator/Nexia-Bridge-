@@ -11,7 +11,8 @@ interface AuthContextType {
   /** Staff only: invite codes to give each family. */
   org: PublicOrg | null;
   children_: { id: string; name: string; inviteCode?: string; team?: { id: string; name: string; role: AuthUser['role']; title: string }[] }[];
-  login: (email: string, password: string, apiUrl: string) => Promise<void>;
+  /** `expect` is the set of roles the person chose on the welcome page; a different account is turned away. */
+  login: (email: string, password: string, apiUrl: string, expect?: AuthUser['role'][]) => Promise<void>;
   register: (v: { name: string; email: string; password: string; role: AuthUser['role']; code: string }, apiUrl: string) => Promise<void>;
   logout: () => void;
   useDemo: () => void;
@@ -19,6 +20,13 @@ interface AuthContextType {
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+/** The account exists but belongs to another kind of user than the page the person came through. */
+export class RoleMismatch extends Error {
+  constructor(public actual: AuthUser['role']) {
+    super('wrong portal');
+  }
+}
 
 interface AuthResponse { token: string; user: AuthUser }
 
@@ -65,9 +73,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     apiUrl: getApiUrl(),
     org,
     children_: kids,
-    login: async (email, password, url) => {
+    login: async (email, password, url, expect) => {
       setApiUrl(url);
-      await finish(await api<AuthResponse>('/api/auth/login', { method: 'POST', body: { email, password } }));
+      const r = await api<AuthResponse>('/api/auth/login', { method: 'POST', body: { email, password } });
+      if (expect && !expect.includes(r.user.role)) throw new RoleMismatch(r.user.role);
+      await finish(r);
     },
     register: async (v, url) => {
       setApiUrl(url);
