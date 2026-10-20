@@ -50,6 +50,9 @@ export const Header: React.FC<{ onOpenAudit?: () => void }> = ({ onOpenAudit }) 
 
   const [childDropdownOpen, setChildDropdownOpen] = useState(false);
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
+  // Each portal is its own sign-in: nobody hops between portals from inside one. Only a tester who opens the
+  // practice version with ?portals=all gets the quick switcher (the guide screenshots rely on it).
+  const canSwitch = !isServerMode && new URLSearchParams(window.location.search).has('portals');
 
   // Role accents defined in design specification
   const roleColors: Record<RoleType, { bg: string; dot: string; labelEn: string; labelAr: string }> = {
@@ -83,18 +86,18 @@ export const Header: React.FC<{ onOpenAudit?: () => void }> = ({ onOpenAudit }) 
           {/* Quick Role Switcher Pill */}
           <div className="relative">
             <button
-              onClick={() => !isServerMode && setRoleDropdownOpen(!roleDropdownOpen)}
+              onClick={() => canSwitch && setRoleDropdownOpen(!roleDropdownOpen)}
               className="flex items-center gap-1.5 font-medium px-2 py-0.5 rounded-full bg-white dark:bg-[#201C3D] text-[#1F1B3A] dark:text-white border border-[#E8E2D9] dark:border-[#38325E] shadow-xs hover:border-[#4F46E5] transition"
-              title="Switch role"
+              title={canSwitch ? 'Switch role' : undefined}
             >
               <span className={`w-2 h-2 rounded-full ${currentRoleConfig.dot}`}></span>
               <span className="truncate max-w-[110px] sm:max-w-none">
                 {language === 'ar' ? currentRoleConfig.labelAr : currentRoleConfig.labelEn}
               </span>
-              {!isServerMode && <ChevronDown className="w-3 h-3 text-[#6B6785]" />}
+              {canSwitch && <ChevronDown className="w-3 h-3 text-[#6B6785]" />}
             </button>
 
-            {roleDropdownOpen && !isServerMode && (
+            {roleDropdownOpen && canSwitch && (
               <div className="absolute left-0 mt-1 w-64 bg-white dark:bg-[#1F1B3A] border border-[#E8E2D9] dark:border-[#38325E] rounded-xl shadow-warm py-1.5 z-50 animate-in fade-in zoom-in-95">
                 <div className="px-3 py-1 text-[10px] font-semibold uppercase tracking-wider text-[#6B6785] dark:text-[#8E8AAB]">
                   Switch Portal Role
@@ -175,7 +178,17 @@ export const Header: React.FC<{ onOpenAudit?: () => void }> = ({ onOpenAudit }) 
               <span>Sign out</span>
             </button>
           ) : (
-            serverConfigured() && (
+            <>
+              <button
+                onClick={() => setRole(null)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white dark:bg-[#201C3D] border border-[#E8E2D9] dark:border-[#38325E] hover:border-rose-400 text-[11px] font-medium transition"
+                title={language === 'ar' ? 'العودة إلى الصفحة الرئيسية' : 'Back to the welcome page'}
+                aria-label={language === 'ar' ? 'خروج' : 'Exit portal'}
+              >
+                <LogOut className="w-3 h-3 text-rose-600" />
+                <span>{language === 'ar' ? 'خروج' : 'Exit'}</span>
+              </button>
+            {serverConfigured() && (
               <button
                 onClick={auth.leaveDemo}
                 className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white dark:bg-[#201C3D] border border-[#E8E2D9] dark:border-[#38325E] hover:border-[#4F46E5] text-[11px] font-medium transition"
@@ -183,7 +196,8 @@ export const Header: React.FC<{ onOpenAudit?: () => void }> = ({ onOpenAudit }) 
               >
                 <span>Sign in</span>
               </button>
-            )
+            )}
+            </>
           )}
 
           {/* Language Switch */}

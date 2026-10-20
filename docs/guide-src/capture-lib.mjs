@@ -9,7 +9,7 @@ export async function open(base = 'http://127.0.0.1:3120/', { keepLaunch = false
   const p = await b.newPage();
   p.on('dialog', (d) => d.accept());
   await p.setViewport({ width: 390, height: 1000, deviceScaleFactor: 2 });
-  await p.goto(base);
+  await p.goto(base + (base.includes('?') ? '&' : '?') + 'portals=all'); // the quick portal switcher is for testers only
   await w(1200);
   await p.evaluate(() => localStorage.clear());
   await p.reload();
