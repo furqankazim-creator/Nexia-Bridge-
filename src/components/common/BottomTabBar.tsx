@@ -15,6 +15,7 @@ import {
   ClipboardCheck, 
   Settings, 
   FolderKanban,
+  FolderHeart,
   Mic
 } from 'lucide-react';
 
@@ -51,6 +52,7 @@ export const BottomTabBar: React.FC = () => {
           { id: 'Progress', labelEn: 'Progress', labelAr: 'التقدم', icon: BarChart2 },
           { id: 'Targets', labelEn: 'Targets', labelAr: 'الأهداف', icon: TargetIcon },
           { id: 'Sessions', labelEn: 'Sessions', labelAr: 'الجلسات', icon: Calendar },
+          { id: 'Records', labelEn: 'Records', labelAr: 'السجلات', icon: FolderHeart },
           { id: 'Messages', labelEn: 'Messages', labelAr: 'الرسائل', icon: MessageSquare },
         ];
       case 'behavior':

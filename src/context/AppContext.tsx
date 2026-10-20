@@ -24,6 +24,7 @@ import {
   BipPlan,
   Reinforcer,
   HomeTask,
+  MedicalRecord,
   WeeklyQuestionSet,
   SentenceTask,
   SentenceAttempt,
@@ -38,6 +39,8 @@ import {
 import { demoOrg, demoRoster, DEMO_ADMIN_EVENT } from '../components/admin/demoAdmin';
 import { useSupervision, type SupervisionApi } from './useSupervision';
 import { demoAbc, demoHomeTasks, demoSessions } from '../data/demoSupervision';
+import { canRoleSee, demoMedicalRecords } from '../data/medicalCategories';
+import { deleteFile, type FileStore } from '../utils/medicalFiles';
 import { 
   INITIAL_CHILDREN, blankChild,
   INITIAL_CONSENT_GRANTS, 
@@ -141,6 +144,12 @@ interface AppContextType extends SupervisionApi {
   addReinforcer: (r: Omit<Reinforcer, 'id' | 'lastAssessedAt'>) => void;
   updateReinforcer: (id: string, patch: Partial<Reinforcer>) => void;
   removeReinforcer: (id: string) => void;
+  /** Medical reports the parent saved. Staff only ever receive the ones shared with their role. */
+  medicalRecords: MedicalRecord[];
+  saveMedicalRecord: (r: MedicalRecord) => void;
+  removeMedicalRecord: (id: string) => void;
+  /** Where report files are kept (server or this browser) and the sign-in for it. */
+  fileStore: FileStore;
   homeTasks: HomeTask[];
   addHomeTask: (t: Omit<HomeTask, 'id' | 'done' | 'doneAt' | 'parentNote'>) => void;
   setHomeTaskDone: (id: string, done: boolean, parentNote?: string) => void;
@@ -207,6 +216,7 @@ const ABC_KEY = 'nexia.abc.v1';
 const BIPS_KEY = 'nexia.bips.v1';
 const REINFORCERS_KEY = 'nexia.reinforcers.v1';
 const HOMETASKS_KEY = 'nexia.homeTasks.v1';
+const MEDICAL_KEY = 'nexia.medical.v1';
 const WEEKLY_KEY = 'nexia.weeklyQuestions.v1';
 const SENTENCES_KEY = 'nexia.sentenceTasks.v1';
 const ARTIC_KEY = 'nexia.articulationLogs.v1';
@@ -352,6 +362,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => { if (!isServerMode) saveJson(BIPS_KEY, bips); }, [bips]);
   useEffect(() => { if (!isServerMode) saveJson(REINFORCERS_KEY, reinforcers); }, [reinforcers]);
   useEffect(() => { if (!isServerMode) saveJson(HOMETASKS_KEY, homeTasks); }, [homeTasks]);
+  const [allMedical, setAllMedical] = useState<MedicalRecord[]>(() => (isServerMode ? [] : loadSeeded<MedicalRecord>(MEDICAL_KEY, demoMedicalRecords('child-lama'), 'nexia.demoSeed.medical.v1')));
+  useEffect(() => { if (!isServerMode) saveJson(MEDICAL_KEY, allMedical); }, [allMedical]);
+  // The practice version has one device for every portal, so the sharing rule is applied here too.
+  const medicalRecords = useMemo(() => allMedical.filter(r => canRoleSee(r, role)), [allMedical, role]);
+  const fileStore = useMemo<FileStore>(() => ({ server: isServerMode, token: auth.token }), [isServerMode, auth.token]);
+  const saveMedicalRecord = (r: MedicalRecord) => setAllMedical(prev => [r, ...prev.filter(x => x.id !== r.id)]);
+  const removeMedicalRecord = (id: string) => {
+    const gone = allMedical.find(x => x.id === id);
+    if (gone && !isServerMode) gone.files.forEach(f => void deleteFile(fileStore, f.id)); // the server removes its own copies
+    setAllMedical(prev => prev.filter(x => x.id !== id));
+  };
 
   const [weeklySets, setWeeklySets] = useState<WeeklyQuestionSet[]>(() => load<WeeklyQuestionSet[]>(WEEKLY_KEY, []));
   const [sentenceTasks, setSentenceTasks] = useState<SentenceTask[]>(() => load<SentenceTask[]>(SENTENCES_KEY, []));
@@ -1014,6 +1035,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     { col: 'abcRecords', items: abcRecords, apply: fn => setAbcRecords(fn as (p: ABCRecord[]) => ABCRecord[]), rid: (x: ABCRecord) => x.id },
     { col: 'bips', items: bips, apply: fn => setBips(fn as (p: BipPlan[]) => BipPlan[]), rid: (x: BipPlan) => x.childId },
     { col: 'reinforcers', items: reinforcers, apply: fn => setReinforcers(fn as (p: Reinforcer[]) => Reinforcer[]), rid: (x: Reinforcer) => x.id },
+    { col: 'medicalRecords', items: allMedical, apply: fn => setAllMedical(fn as (p: MedicalRecord[]) => MedicalRecord[]), rid: (x: MedicalRecord) => x.id },
     { col: 'homeTasks', items: homeTasks, apply: fn => setHomeTasks(fn as (p: HomeTask[]) => HomeTask[]), rid: (x: HomeTask) => x.id },
     { col: 'weeklyQuestions', items: weeklySets, apply: fn => setWeeklySets(fn as (p: WeeklyQuestionSet[]) => WeeklyQuestionSet[]), rid: (x: WeeklyQuestionSet) => x.id },
     { col: 'articulationLogs', items: articulationLogs, apply: fn => setArticulationLogs(fn as (p: ArticulationLog[]) => ArticulationLog[]), rid: (x: ArticulationLog) => x.id },
@@ -1212,6 +1234,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addReinforcer,
         updateReinforcer,
         removeReinforcer,
+        medicalRecords,
+        saveMedicalRecord,
+        removeMedicalRecord,
+        fileStore,
         homeTasks,
         addHomeTask,
         setHomeTaskDone,

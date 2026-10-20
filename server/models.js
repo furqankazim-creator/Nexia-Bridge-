@@ -91,6 +91,18 @@ const auditSchema = new Schema({
   details: { type: Schema.Types.Mixed, default: {} },
 });
 
+/** An uploaded medical report (PDF or photo). Kept apart from the synced records so large files never travel with them. */
+const medicalFileSchema = new Schema({
+  _id: { type: String },
+  childId: { type: String, required: true, index: true },
+  uploadedBy: { type: String },
+  name: { type: String, required: true, maxlength: 160 },
+  mime: { type: String, required: true },
+  size: { type: Number, required: true },
+  data: { type: Buffer, required: true },
+  createdAt: { type: Date, default: Date.now },
+});
+
 const counterSchema = new Schema({ _id: String, n: { type: Number, default: 0 } });
 
 export const User = mongoose.models.User || mongoose.model('User', userSchema);
@@ -101,6 +113,7 @@ const settingSchema = new Schema({ _id: String, data: { type: Schema.Types.Mixed
 export const Setting = mongoose.models.Setting || mongoose.model('Setting', settingSchema);
 export const Center = mongoose.models.Center || mongoose.model('Center', centerSchema);
 export const Invoice = mongoose.models.Invoice || mongoose.model('Invoice', invoiceSchema);
+export const MedicalFile = mongoose.models.MedicalFile || mongoose.model('MedicalFile', medicalFileSchema);
 export const Counter = mongoose.models.Counter || mongoose.model('Counter', counterSchema);
 
 export const nextSeq = async () => (await Counter.findOneAndUpdate({ _id: 'seq' }, { $inc: { n: 1 } }, { upsert: true, new: true })).n;

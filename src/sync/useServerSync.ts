@@ -45,7 +45,9 @@ interface SyncRecord {
 }
 
 const POLL_MS = 4000;
-const PARENT_WRITES = new Set(['homeTasks', 'messages']);
+const PARENT_WRITES = new Set(['homeTasks', 'messages', 'medicalRecords']);
+/** Written (and deleted) by the parent only: staff devices only ever read them. */
+const PARENT_ONLY = new Set(['medicalRecords']);
 
 export function useServerSync(opts: Options) {
   const latest = useRef(opts);
@@ -79,6 +81,7 @@ export function useServerSync(opts: Options) {
 
     for (const spec of o.cols) {
       if (!staff && !PARENT_WRITES.has(spec.col)) continue;
+      if (staff && PARENT_ONLY.has(spec.col)) continue;
       const known = mapFor(spec.col);
       const current = new Map<string, { json: string; item: any }>();
       const seenIds = seenFor(spec.col);
@@ -98,7 +101,7 @@ export function useServerSync(opts: Options) {
           else throw e;
         }
       }
-      if (staff) {
+      if (staff || PARENT_ONLY.has(spec.col)) {
         for (const rid of [...known.keys()]) {
           if (current.has(rid) || !seenIds.has(rid)) continue;
           try {

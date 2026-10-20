@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { MedicalRecordsPanel } from '../medical/MedicalRecords';
 import { useApp } from '../../context/AppContext';
 import { useVoiceDictation } from '../../hooks/useVoiceDictation';
 import { DictationPanel } from '../common/DictationPanel';
@@ -883,6 +884,10 @@ export const TeacherPortal: React.FC = () => {
       <div className="space-y-6 md:space-y-0 md:grid md:grid-cols-2 md:gap-6 items-start">
         <ParentChat />
         <HomeTasksManager />
+      </div>
+      <div>
+        <h3 className="font-heading text-lg font-bold text-[#1F1B3A] dark:text-white mb-2">{t('Medical records shared by the family', 'السجلات الطبية التي شاركتها الأسرة')}</h3>
+        <MedicalRecordsPanel mode="staff" embedded />
       </div>
     </div>
   );

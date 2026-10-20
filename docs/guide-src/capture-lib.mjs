@@ -4,7 +4,7 @@ import puppeteer from 'puppeteer-core';
 export const CHROME = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 export const w = (ms) => new Promise((r) => setTimeout(r, ms));
 
-export async function open(base = 'http://127.0.0.1:3120/') {
+export async function open(base = 'http://127.0.0.1:3120/', { keepLaunch = false } = {}) {
   const b = await puppeteer.launch({ executablePath: CHROME, headless: 'new', args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
   const p = await b.newPage();
   p.on('dialog', (d) => d.accept());
@@ -14,6 +14,11 @@ export async function open(base = 'http://127.0.0.1:3120/') {
   await p.evaluate(() => localStorage.clear());
   await p.reload();
   await w(1600);
+  // The app now opens on the welcome screen: pick a portal so the header exists, unless the shot wants the welcome screen.
+  if (!keepLaunch) {
+    await p.evaluate(() => [...document.querySelectorAll('button')].find((x) => x.innerText.trim() === 'Parent')?.click());
+    await w(900);
+  }
   return { b, p };
 }
 

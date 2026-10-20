@@ -33,7 +33,7 @@ export const Field: React.FC<{ label: string; hint?: string; children: React.Rea
 );
 
 export const Chip: React.FC<{ on: boolean; onClick: () => void; disabled?: boolean; children: React.ReactNode }> = ({ on, onClick, disabled, children }) => (
-  <button type="button" aria-pressed={on} disabled={disabled} onClick={onClick} className={`px-3 py-1.5 rounded-full text-xs font-bold border transition ${on ? 'bg-[#4F46E5] text-white border-[#4F46E5]' : 'bg-white dark:bg-transparent text-[#6B6785] border-[#E8E2D9] dark:border-[#38325E]'}`}>{children}</button>
+  <button type="button" aria-pressed={on} disabled={disabled} onClick={onClick} className={`px-3 py-1.5 rounded-full text-xs font-bold border transition whitespace-nowrap shrink-0 ${on ? 'bg-[#4F46E5] text-white border-[#4F46E5]' : 'bg-white dark:bg-transparent text-[#6B6785] border-[#E8E2D9] dark:border-[#38325E]'}`}>{children}</button>
 );
 
 export const Pill: React.FC<{ tone?: 'green' | 'amber' | 'red' | 'grey' | 'indigo'; children: React.ReactNode }> = ({ tone = 'grey', children }) => {

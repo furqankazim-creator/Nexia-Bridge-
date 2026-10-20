@@ -667,3 +667,58 @@ test('messages may carry a small photo or voice note, nothing else', async () =>
   assert.equal((await put(P, 'messages', 'm-bad3', 'child-a', { id: 'm-bad3', attachment: { kind: 'image', src: 'data:text/html;base64,PGI+' } })).status, 400, 'wrong media type');
   assert.equal((await put(P, 'messages', 'm-bad4', 'child-a', { id: 'm-bad4', attachment: { kind: 'image', src: 'data:image/jpeg;base64,' + 'A'.repeat(240_000) } })).status, 400, 'too big');
 });
+
+test('medical records: parent saves, shares by role; staff read only what is shared; admin never', async () => {
+  const T = therapist.body.token, P = parent.body.token, O = otherParent.body.token;
+  const pdf = Buffer.from('%PDF-1.4 tiny report body');
+  const up = (tok, id, buf, type = 'application/pdf', child = 'child-a') =>
+    fetch(`${base}/api/medical-files/${id}?childId=${child}&name=${encodeURIComponent('EEG 2022.pdf')}`, { method: 'PUT', headers: { 'content-type': type, authorization: `Bearer ${tok}` }, body: buf });
+  const open = (tok, id) => fetch(`${base}/api/medical-files/${id}`, { headers: { authorization: `Bearer ${tok}` } });
+
+  // upload rules
+  assert.equal((await up(T, 'file-001', pdf)).status, 403, 'staff cannot upload');
+  assert.equal((await up(O, 'file-001', pdf)).status, 403, 'other family cannot upload to child-a');
+  assert.equal((await up(P, 'file-001', Buffer.from('not a pdf at all, sorry'))).status, 415, 'content must match type');
+  assert.equal((await up(P, 'file-001', Buffer.from('<script>alert(1)</script>'), 'text/html')).status, 415, 'type allow-list');
+  assert.equal((await up(P, 'file-001', pdf)).status, 200);
+
+  const rec = { id: 'med-1', category: 'neuro', title: 'EEG report', date: '2022-03-14', provider: 'Dr. Noor', notes: 'Normal', files: [{ id: 'file-001' }], sharing: { mode: 'private' } };
+  assert.equal((await put(T, 'medicalRecords', 'med-1', 'child-a', rec)).status, 403, 'staff cannot write');
+  assert.equal((await put(O, 'medicalRecords', 'med-1', 'child-a', rec)).status, 403, 'other family');
+  assert.equal((await put(P, 'medicalRecords', 'med-1', 'child-a', { ...rec, category: 'bogus' })).status, 400);
+  assert.equal((await put(P, 'medicalRecords', 'med-1', 'child-a', { ...rec, files: [{ id: 'file-missing' }] })).status, 400, 'file must exist');
+  assert.equal((await put(P, 'medicalRecords', 'med-1', 'child-a', rec)).status, 200);
+
+  // private: staff see nothing and cannot open the file
+  assert.ok(!(await sync(T)).records.some((r) => r.col === 'medicalRecords' && !r.deleted && r.data), 'private record is hidden from staff');
+  assert.equal((await open(T, 'file-001')).status, 404);
+  assert.equal((await open(P, 'file-001')).status, 200);
+  assert.equal((await open(O, 'file-001')).status, 404);
+
+  // share with the supervisor role only: the supervisor sees it, the behavior therapist does not
+  const S = supervisor.body.token, A = admin.body.token;
+  assert.equal((await put(P, 'medicalRecords', 'med-1', 'child-a', { ...rec, sharing: { mode: 'roles', roles: ['supervisor', 'admin'] } })).status, 200);
+  const seen = (tok) => sync(tok).then((x) => x.records.find((r) => r.col === 'medicalRecords' && r.rid === 'med-1' && !r.deleted));
+  assert.equal((await seen(S)).data.title, 'EEG report');
+  assert.equal(await seen(T), undefined);
+  assert.deepEqual((await seen(S)).data.sharing.roles, ['supervisor'], 'unknown roles are dropped');
+  const r1 = await open(S, 'file-001');
+  assert.equal(r1.status, 200);
+  assert.equal(r1.headers.get('content-type'), 'application/pdf');
+  assert.equal((await open(T, 'file-001')).status, 404);
+
+  // staff opening a file is logged; administrators never get records or files
+  assert.equal((await open(A, 'file-001')).status, 403, 'admin cannot open medical files');
+  assert.ok(!(await sync(A)).records.some((r) => r.col === 'medicalRecords'), 'admin sync has no medical records');
+  assert.ok(JSON.stringify((await call('GET', '/api/admin/audit', null, A)).body).includes('medical.view'));
+
+  // going private again removes it from staff devices; deleting removes the file
+  const before = (await sync(S)).latest;
+  assert.equal((await put(P, 'medicalRecords', 'med-1', 'child-a', { ...rec, sharing: { mode: 'private' } })).status, 200);
+  const gone = (await sync(S, before)).records.find((r) => r.rid === 'med-1');
+  assert.equal(gone.deleted, true);
+  assert.equal((await open(S, 'file-001')).status, 404);
+  assert.equal((await call('DELETE', '/api/records/medicalRecords/med-1', null, T)).status, 403, 'staff cannot delete');
+  assert.equal((await call('DELETE', '/api/records/medicalRecords/med-1', null, P)).status, 200);
+  assert.equal((await open(P, 'file-001')).status, 404, 'file is removed with its record');
+});

@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { MedicalRecordsPanel } from '../medical/MedicalRecords';
 import { CheckCircle2, Circle, Trash2 } from 'lucide-react';
 import { useApp } from '../../context/AppContext';
 import { OWN_THREAD } from '../../utils/threads';
@@ -167,18 +168,19 @@ export const FamilyPanel: React.FC = () => {
   const isAr = language === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const unread = useUnreadForRole();
-  const [section, setSection] = useState<'chat' | 'home'>('chat');
+  const [section, setSection] = useState<'chat' | 'home' | 'records'>('chat');
   const items = [
     { id: 'chat' as const, en: 'Parent chat', ar: 'محادثة الأسرة' },
     { id: 'home' as const, en: 'Home tasks', ar: 'مهام المنزل' },
+    { id: 'records' as const, en: 'Medical', ar: 'السجلات الطبية' },
   ];
   return (
     <div className="space-y-4 pb-28 animate-in fade-in" data-testid="family-panel">
       <div>
         <h2 className={`font-heading leading-tight font-bold text-[#0F2A27] dark:text-white ${section === 'chat' ? 'text-2xl' : 'text-[28px]'}`}>{t('Family', 'الأسرة')}</h2>
-        {section !== 'chat' && <p className="text-sm text-[#5C706C] dark:text-[#A5A0C2] mt-1">{t('Home practice for', 'التدريب المنزلي لـ')} {activeChild.name}.</p>}
+        {section === 'home' && <p className="text-sm text-[#5C706C] dark:text-[#A5A0C2] mt-1">{t('Home practice for', 'التدريب المنزلي لـ')} {activeChild.name}.</p>}
       </div>
-      <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-[#EDE8DF] dark:bg-[#252044]" role="tablist">
+      <div className="grid grid-cols-3 gap-1 p-1 rounded-2xl bg-[#EDE8DF] dark:bg-[#252044]" role="tablist">
         {items.map((it) => (
           <button key={it.id} type="button" role="tab" aria-selected={section === it.id} onClick={() => setSection(it.id)}
             className={`py-2 rounded-xl text-sm font-semibold transition ${section === it.id ? 'bg-white dark:bg-[#1F1B3A] shadow-card text-[#0F2A27] dark:text-white' : 'text-[#5C706C]'}`}>
@@ -187,7 +189,7 @@ export const FamilyPanel: React.FC = () => {
           </button>
         ))}
       </div>
-      {section === 'chat' ? <ParentChat /> : <HomeTasksManager />}
+      {section === 'chat' ? <ParentChat /> : section === 'home' ? <HomeTasksManager /> : <MedicalRecordsPanel mode="staff" embedded />}
     </div>
   );
 };

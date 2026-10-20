@@ -30,6 +30,7 @@ Production: set `NODE_ENV=production`, `MONGODB_URI`, `JWT_SECRET` (32+ random c
 | Reinforcers, targets, saved sessions | read / write | read |
 | Home tasks | read / write | read; may only set `done`, `doneAt`, `parentNote` |
 | Messages | read / write (create-only) | read family messages, write |
+| Medical records | read only what the parent shared with their role | read, add, change, delete (parents only) |
 
 Messages marked `audience: "staff"` (colleague-only) are never sent to parents.
 
@@ -37,6 +38,10 @@ Messages marked `audience: "staff"` (colleague-only) are never sent to parents.
 
 `POST /api/auth/register`, `POST /api/auth/login`, `GET /api/me`, `POST /api/me/children`,
 `GET /api/sync?since=<seq>`, `PUT|DELETE /api/records/:col/:id`, `GET /api/health`.
+
+Medical report files: `PUT /api/medical-files/:id?childId=&name=` (parent only; PDF, JPG, PNG or WebP up to 8 MB, content checked),
+`GET /api/medical-files/:id` (the parent, or staff while a record shared with their role points to it; logged as `medical.view`),
+`DELETE /api/medical-files/:id` (parent only, only if no record uses it). Administrators get neither records nor files.
 
 ## Tests
 

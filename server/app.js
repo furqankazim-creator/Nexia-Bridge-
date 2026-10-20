@@ -5,16 +5,50 @@ import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
 import crypto from 'node:crypto';
-import { User, Child, Center, RecordDoc, AuditLog, nextSeq, ROLES } from './models.js';
+import { User, Child, Center, RecordDoc, AuditLog, MedicalFile, nextSeq, ROLES } from './models.js';
 import { registerAdminRoutes } from './admin.js';
 import { getSettings, seatsUsed, publicOrg } from './settings.js';
-import { POLICY, isStaff, isAdmin, isClinical, canRead, canSeeRecord, shapeData, accessMatrix, hasChild } from './policy.js';
+import { POLICY, isStaff, isAdmin, isClinical, canRead, canSeeRecord, shapeData, accessMatrix, hasChild, normalizeSharing, MEDICAL_CATEGORIES } from './policy.js';
 
 // Record changes worth keeping in the audit trail (routine chat/practice sync is not).
-const AUDITED_COLS = new Set(['targets', 'savedSessions', 'bips', 'teamRequests', 'templates']);
+const AUDITED_COLS = new Set(['targets', 'savedSessions', 'bips', 'teamRequests', 'templates', 'medicalRecords']);
 const ORG_CHILD = 'org';
 
 const MAX_DATA_BYTES = 256 * 1024;
+const MAX_MEDICAL_FILE = 8 * 1024 * 1024;
+const MAX_MEDICAL_FILES_PER_CHILD = 300;
+const MEDICAL_MIMES = {
+  'application/pdf': (b) => b.subarray(0, 4).toString('latin1') === '%PDF',
+  'image/jpeg': (b) => b[0] === 0xff && b[1] === 0xd8,
+  'image/png': (b) => b.subarray(1, 4).toString('latin1') === 'PNG',
+  'image/webp': (b) => b.subarray(0, 4).toString('latin1') === 'RIFF' && b.subarray(8, 12).toString('latin1') === 'WEBP',
+};
+const clip = (v, n) => (typeof v === 'string' ? v.trim().slice(0, n) : '');
+
+/** Keep only the known fields of a medical record, in a known shape. Returns an error text if it cannot be saved. */
+async function cleanMedicalRecord(data, childId) {
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(String(data.date || '')) ? data.date : null;
+  if (!date) return { error: 'Choose the date of the report.' };
+  const title = clip(data.title, 120);
+  if (title.length < 2) return { error: 'Give the record a title.' };
+  if (!MEDICAL_CATEGORIES.includes(data.category)) return { error: 'Choose a category.' };
+  const files = [];
+  for (const f of Array.isArray(data.files) ? data.files.slice(0, 5) : []) {
+    if (!f || !/^[\w-]{6,64}$/.test(String(f.id))) return { error: 'One attached file is not valid.' };
+    const doc = await MedicalFile.findOne({ _id: f.id, childId }, 'name mime size');
+    if (!doc) return { error: 'One attached file was not uploaded.' };
+    files.push({ id: doc._id, name: doc.name, mime: doc.mime, size: doc.size });
+  }
+  return {
+    next: {
+      id: data.id, childId, category: data.category, title, date,
+      provider: clip(data.provider, 120), notes: clip(data.notes, 2000),
+      sharing: normalizeSharing(data.sharing), files,
+      createdAt: typeof data.createdAt === 'string' ? data.createdAt.slice(0, 40) : new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+  };
+}
 
 const registerSchema = z.object({
   name: z.string().trim().min(2).max(80),
@@ -203,6 +237,7 @@ export function createApp({ jwtSecret, staffInviteCode, adminInviteCode = null, 
 
     const staff = isStaff(req.user);
     const clinical = isClinical(req.user);
+    if (policy.write === 'parent' && req.user.role !== 'parent') return res.status(403).json({ error: 'Only the parent can change this.' });
     const existing = await RecordDoc.findOne({ col, rid });
     if (existing && existing.childId !== childId) return res.status(409).json({ error: 'That id belongs to another child.' });
 
@@ -212,6 +247,15 @@ export function createApp({ jwtSecret, staffInviteCode, adminInviteCode = null, 
       if (!policy.parentFields || !existing || existing.deleted) return res.status(403).json({ error: 'Only staff can change this.' });
       next = { ...existing.data };
       for (const f of policy.parentFields) if (f in data) next[f] = data[f];
+    }
+    if (col === 'medicalRecords') {
+      const cleaned = await cleanMedicalRecord({ ...data, id: rid }, childId);
+      if (cleaned.error) return res.status(400).json({ error: cleaned.error });
+      next = cleaned.next;
+      // Files taken off the record are removed for good.
+      const keep = new Set(next.files.map((f) => f.id));
+      const dropped = ((existing && !existing.deleted && existing.data?.files) || []).filter((f) => !keep.has(f.id)).map((f) => f.id);
+      if (dropped.length) await MedicalFile.deleteMany({ _id: { $in: dropped }, childId });
     }
     if (col === 'messages' && !staff && !(await getSettings()).policy.parentMessaging) return res.status(403).json({ error: 'Messaging for families is switched off by your administrator.' });
     if (col === 'messages' && next.attachment !== undefined) {
@@ -246,16 +290,74 @@ export function createApp({ jwtSecret, staffInviteCode, adminInviteCode = null, 
     if (validate(req, res)) return;
     const { col, rid } = req.params;
     const policy = POLICY[col];
-    if (!isClinical(req.user) || policy.createOnly) return res.status(403).json({ error: 'You cannot delete this.' });
+    const allowed = policy.write === 'parent' ? req.user.role === 'parent' : isClinical(req.user);
+    if (!allowed || policy.createOnly) return res.status(403).json({ error: 'You cannot delete this.' });
     const existing = await RecordDoc.findOne({ col, rid });
     if (!existing) return res.json({ ok: true });
+    if (col === 'medicalRecords' && existing.data?.files?.length) {
+      if (!hasChild(req.user, existing.childId)) return res.status(403).json({ error: 'You do not have access to this child.' });
+      await MedicalFile.deleteMany({ _id: { $in: existing.data.files.map((f) => f.id) }, childId: existing.childId });
+    }
     if (!(policy.org && existing.childId === ORG_CHILD) && !hasChild(req.user, existing.childId)) return res.status(403).json({ error: 'You do not have access to this child.' });
-    if (existing.childId !== ORG_CHILD && (await Child.exists({ _id: existing.childId, archived: true }))) return res.status(409).json({ error: 'This case is archived and read-only.' });
+    if (policy.write !== 'parent' && existing.childId !== ORG_CHILD && (await Child.exists({ _id: existing.childId, archived: true }))) return res.status(409).json({ error: 'This case is archived and read-only.' });
     const seq = await nextSeq();
     existing.set({ data: null, deleted: true, seq, updatedBy: String(req.user._id), updatedAt: new Date() });
     await existing.save();
     if (AUDITED_COLS.has(col)) await audit(req.user, 'record.delete', { col, rid, childId: existing.childId });
     res.json({ ok: true, seq });
+  }));
+
+  /* ---------------- medical files ---------------- */
+  const fileId = (req, res) => (/^[\w-]{6,64}$/.test(req.params.id) ? true : (res.status(400).json({ error: 'Invalid id.' }), false));
+
+  app.put('/api/medical-files/:id', requireAuth, express.raw({ type: () => true, limit: MAX_MEDICAL_FILE }), wrap(async (req, res) => {
+    if (!fileId(req, res)) return;
+    if (req.user.role !== 'parent') return res.status(403).json({ error: 'Only the parent can add medical files.' });
+    const childId = String(req.query.childId || '');
+    if (!hasChild(req.user, childId)) return res.status(403).json({ error: 'You do not have access to this child.' });
+    const mime = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+    const body = req.body;
+    if (!MEDICAL_MIMES[mime]) return res.status(415).json({ error: 'Only PDF, JPG, PNG or WebP files can be saved.' });
+    if (!Buffer.isBuffer(body) || body.length < 16) return res.status(400).json({ error: 'That file is empty.' });
+    if (!MEDICAL_MIMES[mime](body)) return res.status(415).json({ error: 'That file does not look like a real ' + mime.split('/')[1].toUpperCase() + '.' });
+    const was = await MedicalFile.findById(req.params.id, 'childId');
+    if (was && was.childId !== childId) return res.status(409).json({ error: 'That id belongs to another child.' });
+    if (!was && (await MedicalFile.countDocuments({ childId })) >= MAX_MEDICAL_FILES_PER_CHILD) return res.status(409).json({ error: 'This child has reached the file limit.' });
+    const name = clip(String(req.query.name || 'report'), 160) || 'report';
+    await MedicalFile.findOneAndUpdate({ _id: req.params.id }, { $set: { childId, uploadedBy: String(req.user._id), name, mime, size: body.length, data: body } }, { upsert: true });
+    res.json({ ok: true, id: req.params.id, name, mime, size: body.length });
+  }));
+
+  app.get('/api/medical-files/:id', requireAuth, wrap(async (req, res) => {
+    if (!fileId(req, res)) return;
+    if (isAdmin(req.user)) return res.status(403).json({ error: 'Administrators cannot open medical files.' });
+    const file = await MedicalFile.findById(req.params.id);
+    if (!file || !hasChild(req.user, file.childId)) return res.status(404).json({ error: 'File not found.' });
+    if (req.user.role !== 'parent') {
+      // Staff open a file only while a record that the parent shared with them still points to it.
+      const rec = await RecordDoc.findOne({ col: 'medicalRecords', childId: file.childId, deleted: false, 'data.files.id': file._id });
+      if (!rec || !canSeeRecord(req.user, 'medicalRecords', rec.data)) return res.status(404).json({ error: 'File not found.' });
+      await audit(req.user, 'medical.view', { childId: file.childId, rid: rec.rid });
+    }
+    res.set({
+      'Content-Type': file.mime,
+      'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(file.name)}`,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cache-Control': 'private, no-store',
+    });
+    res.send(file.data);
+  }));
+
+  app.delete('/api/medical-files/:id', requireAuth, wrap(async (req, res) => {
+    if (!fileId(req, res)) return;
+    if (req.user.role !== 'parent') return res.status(403).json({ error: 'Only the parent can remove medical files.' });
+    const file = await MedicalFile.findById(req.params.id, 'childId');
+    if (!file) return res.json({ ok: true });
+    if (!hasChild(req.user, file.childId)) return res.status(403).json({ error: 'You do not have access to this child.' });
+    if (await RecordDoc.exists({ col: 'medicalRecords', childId: file.childId, deleted: false, 'data.files.id': file._id })) return res.status(409).json({ error: 'Remove the file from its record first.' });
+    await MedicalFile.deleteOne({ _id: file._id });
+    res.json({ ok: true });
   }));
 
   registerAdminRoutes(app, { requireAuth, requireAdmin, wrap, audit, staffInviteCode });

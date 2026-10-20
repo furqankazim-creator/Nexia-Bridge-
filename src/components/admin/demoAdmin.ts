@@ -100,8 +100,8 @@ export const demoOrg = (): PublicOrg => { const s = load().settings; return { na
 const MATRIX = [
   ['abcRecords', 'no', 'no', 'no'], ['bips', 'some', 'no', 'summary'], ['reinforcers', 'yes', 'no', 'no'], ['weeklyQuestions', 'yes', 'no', 'no'], ['sentenceTasks', 'yes', 'no', 'no'],
   ['articulationLogs', 'yes', 'no', 'no'], ['audioClips', 'some', 'no', 'no'], ['otChecklist', 'yes', 'no', 'no'], ['otTasks', 'yes', 'no', 'no'], ['otSensory', 'yes', 'no', 'no'],
-  ['targets', 'yes', 'no', 'yes'], ['savedSessions', 'yes', 'no', 'summary'], ['homeTasks', 'yes', 'limited', 'yes'], ['messages', 'some', 'yes', 'no'],
-].map(([col, parentRead, parentWrite, adminRead]) => ({ col, parentRead, parentWrite, clinicalRead: 'yes', clinicalWrite: 'yes', adminRead, adminWrite: 'no' }));
+  ['targets', 'yes', 'no', 'yes'], ['savedSessions', 'yes', 'no', 'summary'], ['homeTasks', 'yes', 'limited', 'yes'], ['messages', 'some', 'yes', 'no'], ['medicalRecords', 'yes', 'yes', 'no'],
+].map(([col, parentRead, parentWrite, adminRead]) => ({ col, parentRead, parentWrite, clinicalRead: col === 'medicalRecords' ? 'some' : 'yes', clinicalWrite: col === 'medicalRecords' ? 'no' : 'yes', adminRead, adminWrite: 'no' }));
 
 export const demoAdminApi: AdminApi = {
   settings: () => rows(reply),

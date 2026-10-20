@@ -1,4 +1,5 @@
 import { HomeTasksCard } from './HomeTasksCard';
+import { MedicalRecordsPanel } from '../medical/MedicalRecords';
 import { BehaviorPlanCard } from './BehaviorPlanCard';
 import { VoiceTipsCard } from './VoiceTipsCard';
 import React, { useEffect, useState } from 'react';
@@ -1809,6 +1810,7 @@ export const ParentPortal: React.FC = () => {
       {activeTab.toLowerCase() === 'progress' && renderProgressTab()}
       {activeTab.toLowerCase() === 'targets' && renderTargetsTab()}
       {activeTab.toLowerCase() === 'sessions' && renderSessionsTab()}
+      {activeTab.toLowerCase() === 'records' && <MedicalRecordsPanel mode="parent" />}
       {activeTab.toLowerCase() === 'messages' && renderMessagesTab()}
 
       {/* MODAL 1: CONSENT CENTER */}

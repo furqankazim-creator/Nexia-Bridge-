@@ -22,7 +22,7 @@ This file explains how the system works and how the screens are built. For a pic
 
 | Portal | Who | Main job |
 |---|---|---|
-| Parent | Parent or caregiver | See progress, do home practice, message the therapist, open Child Mode |
+| Parent | Parent or caregiver | See progress, do home practice, keep medical records and choose who sees them, message the therapist, open Child Mode |
 | Behavior (ABA) | Behavior therapist | Datasheets, targets, graphs, BIP (ABC log, function, reinforcers), notes, Family |
 | Speech (SLP) | Speech therapist | Plan, drills, goals, practice, graphs, notes, Family |
 | OT | Occupational therapist | Plan, tools, checklists, goals, graphs, notes, Family |
@@ -70,6 +70,7 @@ The bottom bar is on phones; on a computer it becomes a menu on the left. Behavi
 | ABC events | No | Read and write | Read | No |
 | Behavior plan (BIP) | Read once it is not a draft | Read and write | Read | Status |
 | Messages | Family messages | Read and write | Read | No |
+| Medical records | Read, add, edit, delete, choose who sees each one | Only the ones the parent shared with their role (view only) | Only the ones shared with supervisors (view only) | Never |
 | Case notes and observations | No | Staff only | Staff only | No |
 | Templates and reports | No | Staff | Staff | No |
 | Accounts, centres, billing | No | No | No | Yes |
@@ -81,7 +82,7 @@ Messages marked as colleague-only are never sent to parents. A parent can only e
 ## 6. What each portal's pages do
 
 ### Parent
-Home, Progress, Targets, Sessions and Messages, plus Child Mode (a big, simple screen for the child), Arabic and English, and Settings. Notifications are in the bell on top.
+Home, Progress, Targets, Sessions, **Records** and Messages, plus Child Mode (a big, simple screen for the child), Arabic and English, and Settings. Notifications are in the bell on top.
 
 ### Behavior therapist
 - **Today:** plan-driven datasheets for the child.
@@ -113,7 +114,33 @@ Review (goals and sessions waiting), Children, Staff (observation of staff and f
 
 ---
 
-## 7. Notes, dictation and chat
+## 7. Medical records (kept by the parent)
+
+Parents can keep their child's medical history in the **Records** tab, even reports that are several years old.
+
+**What a parent can do**
+- **Add a record:** choose a category, give it a title, set the date of the report (old dates are fine), the doctor or centre, and optional notes.
+- **Attach files:** up to five PDFs or photos per record (a phone camera photo works). On the server each file can be up to 8 MB.
+- **Find things again:** search by title, doctor or notes, filter by category, and see records grouped by year with the newest first.
+- **Choose who sees each record:** **Only me** (the default), **Choose people** (tick any of behavior, speech, OT, remedial, classroom teacher, supervisor) or **Whole care team**. The choice can be changed at any time, and turning sharing off removes the record from the therapist's screen.
+- **Edit or delete:** deleting a record also deletes its files.
+
+**Categories:** Diagnosis & assessments, Doctor visits, Neurology & EEG, Medication, Lab tests & scans, Past therapy reports, School & IEP, Vaccinations, Allergies & diet, Hospital & emergency, Insurance & papers, Other.
+
+**What staff see:** therapists and teachers open **Family → Medical**, and supervisors open **Children → Medical records**. They only see records shared with their role, they can open the files, and they cannot change or delete anything.
+
+**Privacy rules (enforced on the server, not only on screen)**
+- Only the parent of that child can add, change or delete records and files.
+- Staff can read a record and its files only while the parent has shared it with their role. The server checks this on every file request.
+- Administrators never receive medical records or files.
+- Each time a staff member opens a file, the server writes it to the audit log (who and when, never the content).
+- Files are stored separately from normal records, and only PDF, JPG, PNG and WebP files whose contents match their type are accepted.
+
+**Practice version:** the same screens work offline. Files are kept in the browser on that device (limit 3 MB each), and switching to a therapist portal on the same device applies the same sharing rules.
+
+---
+
+## 8. Notes, dictation and chat
 
 - **Notes:** SOAP-style session notes with an archive. Dictation uses the browser's speech recognition, so it depends on the browser and is not available in the phone app.
 - **Family chat:** a WhatsApp-style thread between the parent and a therapist, with message bubbles, read marks, a tall conversation area and small attachments. Chat stays in the app; there is no external sharing.
@@ -121,7 +148,7 @@ Review (goals and sessions waiting), Children, Staff (observation of staff and f
 
 ---
 
-## 8. The UI in detail
+## 9. The UI in detail
 
 ### Layout
 - **Mobile first.** The app is a single column that fits a phone (about 390 px wide). The Expo phone app wraps the same web app in a WebView.
@@ -156,7 +183,7 @@ The first screen in demo mode:
 
 ---
 
-## 9. Technology
+## 10. Technology
 
 | Part | Choice |
 |---|---|
@@ -184,7 +211,7 @@ docs/             client guide PDF, screenshots and the guide generator
 
 ---
 
-## 10. Running it
+## 11. Running it
 
 ```bash
 npm install
@@ -203,11 +230,12 @@ npm run lint         # type check
 
 ---
 
-## 11. Known limits
+## 12. Known limits
 
 - Billing records invoices only and takes no payments.
 - There is no calendar sync, and no push or WhatsApp reminders.
 - PDF export opens the browser's print window.
 - Dictation depends on the browser's speech service and is unavailable in the phone app.
 - Chat attachments are small.
+- Medical files are limited to PDF, JPG, PNG and WebP (8 MB each on the server, 3 MB in the practice version). There is no automatic text reading (OCR) of scanned reports.
 - The demo's data stays on one device and is not shared.

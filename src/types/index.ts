@@ -604,3 +604,35 @@ export interface SavedReport {
   /** Headline numbers frozen when saved, so two months can be compared later. */
   snapshot: { goals: number; sessions: number; avgPerformance: number | null; integrity: number | null; ioa: number | null; mastered: number };
 }
+
+/* ---------- Medical records (kept by the parent) ---------- */
+
+export type MedicalCategory = 'diagnosis' | 'doctor' | 'neuro' | 'medication' | 'lab' | 'therapy' | 'school' | 'vaccine' | 'allergy' | 'hospital' | 'insurance' | 'other';
+export type ShareRole = 'behavior' | 'speech' | 'ot' | 'remedial' | 'teacher' | 'supervisor';
+
+export interface MedicalFileRef {
+  id: string;
+  name: string;
+  mime: string;
+  size: number;
+}
+
+/** Who may see a record besides the parent. Private by default. */
+export interface MedicalSharing {
+  mode: 'private' | 'team' | 'roles';
+  roles: ShareRole[];
+}
+
+export interface MedicalRecord {
+  id: string;
+  childId: string;
+  category: MedicalCategory;
+  title: string;
+  date: string; // yyyy-mm-dd: the date of the report, which can be years ago
+  provider: string; // doctor, hospital or centre
+  notes: string;
+  files: MedicalFileRef[];
+  sharing: MedicalSharing;
+  createdAt: string;
+  updatedAt: string;
+}

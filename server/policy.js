@@ -12,6 +12,20 @@ export const isClinical = (user) => isStaff(user) && !isAdmin(user);
  */
 export const ADMIN_READ = new Set(['targets', 'savedSessions', 'homeTasks', 'bips', 'teamRequests']);
 
+/** Roles a parent can pick when sharing a medical record. */
+export const SHARE_ROLES = ['behavior', 'speech', 'ot', 'remedial', 'teacher', 'supervisor'];
+export const MEDICAL_CATEGORIES = ['diagnosis', 'doctor', 'neuro', 'medication', 'lab', 'therapy', 'school', 'vaccine', 'allergy', 'hospital', 'insurance', 'other'];
+
+export const normalizeSharing = (s) => {
+  const mode = s && ['private', 'team', 'roles'].includes(s.mode) ? s.mode : 'private';
+  const roles = mode === 'roles' && Array.isArray(s.roles) ? [...new Set(s.roles.filter((r) => SHARE_ROLES.includes(r)))] : [];
+  return mode === 'roles' && roles.length === 0 ? { mode: 'private', roles: [] } : { mode, roles };
+};
+const sharedWith = (d, role) => {
+  const s = normalizeSharing(d && d.sharing);
+  return s.mode === 'team' || (s.mode === 'roles' && s.roles.includes(role));
+};
+
 /** Which collections exist and who may read/write them. Everything not listed is rejected. */
 export const POLICY = {
   // Clinical, staff only (ABC events are raw clinical observations)
@@ -41,6 +55,9 @@ export const POLICY = {
   savedSessions: { read: 'all', write: 'staff' },
   // Parents read tasks and may only tick them off (done / doneAt / parentNote)
   homeTasks: { read: 'all', write: 'staff', parentFields: ['done', 'doneAt', 'parentNote'] },
+  // Medical reports and history. Only a parent writes them; staff read only what the parent chose to share
+  // (with the whole team or with chosen roles). Administrators never read them.
+  medicalRecords: { read: 'all', write: 'parent', staffVisible: (d, user) => sharedWith(d, user.role) },
   // Messages: anyone on the child's team, create-only. Parents never see audience:"staff".
   messages: { read: 'all', write: 'all', createOnly: true, parentVisible: (d) => d && d.audience !== 'staff' },
 };
@@ -71,17 +88,17 @@ export const accessMatrix = () =>
   Object.entries(POLICY).map(([col, p]) => ({
     col,
     parentRead: p.read === 'all' && (p.parentVisible ? 'some' : 'yes') || 'no',
-    parentWrite: p.parentFields ? 'limited' : p.write === 'all' ? 'yes' : 'no',
-    clinicalRead: 'yes',
-    clinicalWrite: 'yes',
+    parentWrite: p.parentFields ? 'limited' : p.write === 'all' || p.write === 'parent' ? 'yes' : 'no',
+    clinicalRead: p.staffVisible ? 'some' : 'yes',
+    clinicalWrite: p.write === 'parent' ? 'no' : 'yes',
     adminRead: ADMIN_READ.has(col) ? (col === 'savedSessions' || col === 'bips' ? 'summary' : 'yes') : 'no',
     adminWrite: p.adminFields ? 'limited' : 'no',
   }));
 
 export const canSeeRecord = (user, col, data) => {
   if (!canRead(user, col)) return false;
-  if (isStaff(user)) return true;
   const p = POLICY[col];
+  if (isStaff(user)) return p.staffVisible ? p.staffVisible(data, user) : true;
   return p.parentVisible ? p.parentVisible(data) : true;
 };
 
