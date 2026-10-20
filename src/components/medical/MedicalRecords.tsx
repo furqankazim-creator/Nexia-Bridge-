@@ -217,7 +217,10 @@ const RecordDetail: React.FC<{ record: MedicalRecord; canEdit: boolean; onEdit: 
   const [view, setView] = useState<MedicalFileRef | null>(null);
   const [confirm, setConfirm] = useState(false);
   const cat = categoryOf(record.category);
+  // "Choose people" shows its tick list straight away; the choice is saved as soon as one person is ticked.
+  const [draft, setDraft] = useState<MedicalSharing>(record.sharing);
   const share = (s: MedicalSharing) => {
+    setDraft(s);
     if (s.mode === 'roles' && s.roles.length === 0) return;
     saveMedicalRecord({ ...record, sharing: s, updatedAt: new Date().toISOString() });
   };
@@ -238,7 +241,8 @@ const RecordDetail: React.FC<{ record: MedicalRecord; canEdit: boolean; onEdit: 
           {canEdit ? (
             <div>
               <span className="text-xs font-bold block mb-1">{t('Who can see this?', 'من يمكنه رؤية هذا؟')}</span>
-              <SharingPicker value={record.sharing} onChange={share} isAr={isAr} />
+              <SharingPicker value={draft} onChange={share} isAr={isAr} />
+              {draft.mode === 'roles' && draft.roles.length === 0 && <p role="status" className="text-[11px] font-semibold text-amber-600 mt-1">{t('Tick at least one person. Until then this record stays private.', 'حدد شخصاً واحداً على الأقل. حتى ذلك الحين يبقى السجل خاصاً.')}</p>}
             </div>
           ) : (
             <p className="text-[11px] text-[#6B6785] flex items-center gap-1.5"><ShieldCheck className="w-3.5 h-3.5 shrink-0" />{t('Shared with you by the family. View only.', 'تمت مشاركته معك من الأسرة. للعرض فقط.')}</p>
