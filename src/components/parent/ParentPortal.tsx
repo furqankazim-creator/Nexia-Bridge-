@@ -1779,7 +1779,6 @@ export const ParentPortal: React.FC = () => {
                   title={isAr ? 'أهداف هذا المختص' : "This specialist's goals"}
                 ><TargetIcon className="w-5 h-5" /></button>
                 <button onClick={() => { setBookSpecialist(activeContact.name); setShowBookSessionModal(true); }} className={iconBtn} aria-label={isAr ? 'حجز جلسة' : 'Book a session'} title={isAr ? 'حجز جلسة' : 'Book a session'}><Calendar className="w-5 h-5" /></button>
-                <button onClick={() => { setTelehealthSpecialist(activeContact.name); setShowTelehealthModal(true); }} className={iconBtn} aria-label={isAr ? 'مكالمة فيديو' : 'Video call'} title={isAr ? 'مكالمة فيديو' : 'Video call'}><Video className="w-5 h-5" /></button>
               </>
             }
           />

@@ -127,7 +127,6 @@ export const PARENT_SHOTS = [
       [{ sel: '[data-testid=chat-message][data-mine=true]', nth: 0 }, 'Your message', 'Green, on the right. The two ticks mean it was delivered; they turn blue once the specialist has read it.'],
       ['Type a message', 'Message box', 'Write here. Enter sends. Shift+Enter starts a new line.'],
       [{ sel: '[data-testid=emoji-toggle]' }, 'Smiley', 'Add an emoji.'],
-      [{ sel: '[data-testid=attach-photo]' }, 'Picture', 'Send a photo, with an optional caption.'],
       [{ sel: '[data-testid=voice-start]' }, 'Microphone', 'Press to record a voice message (up to 30 seconds). When you type, this turns into the send arrow.'],
     ],
     steps: ['Type your message and press Enter (or the green button).', 'Tap the microphone to leave a voice message instead.', 'Tap a photo in the chat to see it full screen.'],

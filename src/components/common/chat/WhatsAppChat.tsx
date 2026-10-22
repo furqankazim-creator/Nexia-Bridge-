@@ -1,7 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { ArrowDown, ArrowLeft, Check, CheckCheck, Image as ImageIcon, Lock, Mic, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowLeft, Check, CheckCheck, Lock, Mic, Pause, Play, Send, Smile, Trash2, X } from 'lucide-react';
 import type { MessageAttachment, MessageItem } from '../../../types';
-import { downscaleImage } from '../../../utils/image';
 
 /** What the chat list shows for a message: its text, or a label for a photo or voice note. */
 export const messagePreview = (m: Pick<MessageItem, 'contentEn' | 'contentAr' | 'attachment'>, isAr: boolean): string => {
@@ -194,7 +193,7 @@ export const ChatThread: React.FC<ThreadProps> = ({ messages, isMine, unreadByOt
   );
 };
 
-/** The WhatsApp-style input: emoji, photo, a rounded field that grows, and send (or record a voice note when empty). */
+/** The WhatsApp-style input: emoji, a rounded field that grows, and send (or record a voice note when empty). Text and voice only. */
 export const ChatComposer: React.FC<{
   onSend: (text: string, attachment?: MessageAttachment) => void;
   placeholder: string;
@@ -205,10 +204,8 @@ export const ChatComposer: React.FC<{
 }> = ({ onSend, placeholder, isAr, disabled, label, notify }) => {
   const [text, setText] = useState('');
   const [emojis, setEmojis] = useState(false);
-  const [photo, setPhoto] = useState<string | null>(null);
   const [rec, setRec] = useState<null | { seconds: number }>(null);
   const ta = useRef<HTMLTextAreaElement>(null);
-  const file = useRef<HTMLInputElement>(null);
   const recorder = useRef<MediaRecorder | null>(null);
   const stream = useRef<MediaStream | null>(null);
   const chunks = useRef<Blob[]>([]);
@@ -222,20 +219,9 @@ export const ChatComposer: React.FC<{
 
   const send = () => {
     const v = text.trim();
-    if ((!v && !photo) || disabled) return;
-    onSend(v, photo ? { kind: 'image', src: photo } : undefined);
-    setText(''); setPhoto(null); setEmojis(false);
-  };
-
-  const pickPhoto = async (f: File | undefined) => {
-    if (!f) return;
-    // Photos travel inside the message, so they are shrunk until they are small enough.
-    for (const [px, q] of [[900, 0.72], [720, 0.6], [560, 0.5]] as const) {
-      const url = await downscaleImage(f, px, q);
-      if (!url) { say(isAr ? 'تعذّر قراءة الصورة.' : 'That file is not a photo.'); return; }
-      if (url.length <= MAX_DATA_URL) { setPhoto(url); return; }
-    }
-    say(isAr ? 'الصورة كبيرة جداً.' : 'That photo is too big.');
+    if (!v || disabled) return;
+    onSend(v);
+    setText(''); setEmojis(false);
   };
 
   const stopTimer = () => { if (timer.current) clearInterval(timer.current); timer.current = null; };
@@ -288,16 +274,9 @@ export const ChatComposer: React.FC<{
   };
 
   const touch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
-  const hasContent = !!text.trim() || !!photo;
+  const hasContent = !!text.trim();
   return (
     <div className="bg-[#F0F2F5] dark:bg-[#202C33]" data-testid="chat-composer">
-      {photo && (
-        <div className="px-3 pt-2 flex items-center gap-3" data-testid="photo-preview">
-          <img src={photo} alt="" className="h-16 w-16 rounded-lg object-cover" />
-          <p className="text-xs text-[#667781] dark:text-[#8696A0] flex-1">{isAr ? 'أضف تعليقاً (اختياري) ثم أرسل.' : 'Add a caption (optional), then send.'}</p>
-          <button type="button" onClick={() => setPhoto(null)} aria-label={isAr ? 'إزالة الصورة' : 'Remove photo'} className="w-8 h-8 rounded-full bg-black/10 dark:bg-white/10 flex items-center justify-center"><X className="w-4 h-4" /></button>
-        </div>
-      )}
       {emojis && !rec && (
         <div className="px-3 pt-2 grid grid-cols-10 gap-0.5 text-[22px] leading-none max-h-28 overflow-y-auto" data-testid="emoji-panel">
           {EMOJIS.map((e) => <button key={e} type="button" onClick={() => { setText((t) => `${t}${e}`); ta.current?.focus(); }} className="py-1 rounded hover:bg-black/5 dark:hover:bg-white/10" aria-label={e}>{e}</button>)}
@@ -329,8 +308,6 @@ export const ChatComposer: React.FC<{
               placeholder={placeholder}
               className="flex-1 min-w-0 resize-none bg-transparent text-[15px] leading-[20px] py-[11px] outline-none border-0 text-[#111B21] dark:text-[#E9EDEF] placeholder:text-[#667781] dark:placeholder:text-[#8696A0] disabled:opacity-60"
             />
-            <button type="button" onClick={() => file.current?.click()} disabled={disabled} aria-label={isAr ? 'إرفاق صورة' : 'Attach a photo'} data-testid="attach-photo" className="w-10 h-11 shrink-0 text-[#54656F] dark:text-[#8696A0] flex items-center justify-center"><ImageIcon className="w-5 h-5" /></button>
-            <input ref={file} type="file" accept="image/*" className="hidden" data-testid="photo-input" onChange={(e) => { void pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
           </div>
           {hasContent ? (
             <button type="submit" disabled={disabled} aria-label={isAr ? 'إرسال' : 'Send'} data-testid="chat-send" className={`w-11 h-11 rounded-full ${WA.send} text-white flex items-center justify-center shrink-0 active:scale-95 transition disabled:opacity-50`}>
