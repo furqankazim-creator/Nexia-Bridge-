@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 
 export const BottomTabBar: React.FC = () => {
-  const { role, activeTab, setActiveTab, language, targets, savedSessions, childrenList, teamRequests } = useApp();
+  const { role, activeTab, setActiveTab, language, targets, savedSessions, childrenList, teamRequests, unreadFor } = useApp();
   const unread = useUnreadForRole();
 
   if (!role) return null;
@@ -38,6 +38,7 @@ export const BottomTabBar: React.FC = () => {
   const openRequests = teamRequests.filter((r) => r.status === 'open').length;
   const badgeFor = (id: string): number => {
     if (role === 'supervisor' && id === 'Review') return waitingReview;
+    if (role === 'supervisor' && id === 'Children') return unreadFor('contact-circle');
     if (role === 'admin' && id === 'Home') return openRequests;
     return 0;
   };

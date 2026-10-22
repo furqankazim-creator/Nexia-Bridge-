@@ -8,6 +8,7 @@ import { parseMastery } from '../../utils/decisionSupport';
 import { GOAL_BANK } from '../../data/goalBank';
 import { trialCounts } from './ReviewTab';
 import { MedicalRecordsPanel } from '../medical/MedicalRecords';
+import { ParentChat } from '../common/FamilyPanel';
 import { BTN, BTN_GHOST, CARD, Chip, Empty, Field, INPUT, Pill, Sheet, Trend } from './ui';
 
 const disc = (r: string) => DISCIPLINE_LABEL[r]?.en ?? r;
@@ -24,11 +25,11 @@ const dateOf = (iso: string) => new Date(iso).toLocaleDateString('en-GB', { day:
 
 type Sheet =
   | { kind: 'goal' | 'edit'; id: string }
-  | { kind: 'add' | 'bip' | 'home' | 'team' | 'notes' | 'medical'; childId: string }
+  | { kind: 'add' | 'bip' | 'home' | 'team' | 'notes' | 'medical' | 'chat'; childId: string }
   | null;
 
 export const ChildrenTab: React.FC = () => {
-  const { childrenList, targets, savedSessions, thresholds, caseNotes, teamRequests, medicalRecords } = useApp();
+  const { childrenList, targets, savedSessions, thresholds, caseNotes, teamRequests, medicalRecords, unreadFor } = useApp();
   const [open, setOpen] = useState<string | null>(null);
   const [sheet, setSheet] = useState<Sheet>(null);
   const [rules, setRules] = useState(false);
@@ -96,11 +97,12 @@ export const ChildrenTab: React.FC = () => {
                   </div>
                 ))}
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-6 gap-2 pt-1" data-testid="child-actions">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-1" data-testid="child-actions">
                   <button type="button" className={`${BTN} flex items-center justify-center gap-1`} onClick={() => setSheet({ kind: 'add', childId: o.child.id })}><Plus className="w-3.5 h-3.5" /> Add goal</button>
                   <button type="button" className={BTN_GHOST} onClick={() => setSheet({ kind: 'bip', childId: o.child.id })}>Behavior plan</button>
                   <button type="button" className={BTN_GHOST} onClick={() => setSheet({ kind: 'home', childId: o.child.id })}>Home practice</button>
                   <button type="button" className={BTN_GHOST} onClick={() => setSheet({ kind: 'notes', childId: o.child.id })}>Case notes ({caseNotes.filter((n) => n.childId === o.child.id).length})</button>
+                  <button type="button" className={BTN_GHOST} onClick={() => setSheet({ kind: 'chat', childId: o.child.id })}>Family chat{unreadFor('contact-circle', o.child.id) ? ` (${unreadFor('contact-circle', o.child.id)} new)` : ''}</button>
                   <button type="button" className={BTN_GHOST} onClick={() => setSheet({ kind: 'medical', childId: o.child.id })}>Medical records ({medicalRecords.filter((m) => m.childId === o.child.id).length})</button>
                   <button type="button" className={`${BTN_GHOST} col-span-2 md:col-span-1`} onClick={() => setSheet({ kind: 'team', childId: o.child.id })}>Team change request{reqs ? ` (${reqs} open)` : ''}</button>
                 </div>
@@ -117,6 +119,11 @@ export const ChildrenTab: React.FC = () => {
       {sheet?.kind === 'bip' && <BipSheet child={childrenList.find((c) => c.id === sheet.childId)!} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'home' && <HomePractice child={childrenList.find((c) => c.id === sheet.childId)!} onClose={() => setSheet(null)} />}
       {sheet?.kind === 'team' && <TeamRequestSheet child={childrenList.find((c) => c.id === sheet.childId)!} onClose={() => setSheet(null)} />}
+      {sheet?.kind === 'chat' && (
+        <Sheet title={`Family chat · ${childrenList.find((c) => c.id === sheet.childId)?.name ?? ''}`} onClose={() => setSheet(null)}>
+          <ParentChat childId={sheet.childId} embedded />
+        </Sheet>
+      )}
       {sheet?.kind === 'medical' && (
         <Sheet title={`Medical records · ${childrenList.find((c) => c.id === sheet.childId)?.name ?? ''}`} onClose={() => setSheet(null)}>
           <MedicalRecordsPanel mode="staff" childId={sheet.childId} embedded />

@@ -45,7 +45,7 @@ interface SyncRecord {
 }
 
 const POLL_MS = 4000;
-const PARENT_WRITES = new Set(['homeTasks', 'messages', 'medicalRecords']);
+const PARENT_WRITES = new Set(['homeTasks', 'messages', 'medicalRecords', 'readMarks']);
 /** Written (and deleted) by the parent only: staff devices only ever read them. */
 const PARENT_ONLY = new Set(['medicalRecords']);
 

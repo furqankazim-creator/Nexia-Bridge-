@@ -67,6 +67,7 @@ export const ParentPortal: React.FC = () => {
     setActiveContactId,
     sendContactMessage,
     markContactRead,
+    isServerMode,
     triggerConfetti,
     showNotification
   } = useApp();
@@ -1765,7 +1766,7 @@ export const ParentPortal: React.FC = () => {
             backLabel={isAr ? 'المحادثات' : 'Back to chats'}
             avatar={<Avatar initial={activeContact.avatarInitial} bg={activeContact.avatarBg} text={activeContact.avatarTextColor} size={40} online={activeContact.online} />}
             title={activeContact.name}
-            subtitle={`${activeContact.online ? (isAr ? 'متصل الآن' : 'online') : (isAr ? 'آخر ظهور أمس' : 'last seen yesterday')} · ${activeContact.roleTitle}`}
+            subtitle={isServerMode ? activeContact.roleTitle : `${activeContact.online ? (isAr ? 'متصل الآن' : 'online') : (isAr ? 'آخر ظهور أمس' : 'last seen yesterday')} · ${activeContact.roleTitle}`}
             actions={
               <>
                 <button

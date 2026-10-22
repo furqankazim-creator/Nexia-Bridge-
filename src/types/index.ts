@@ -636,3 +636,12 @@ export interface MedicalRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+/** Where a person left off in a chat (server mode): messages from others after `at` are unread. */
+export interface ReadMark {
+  id: string; // `${userId}:${contactId}:${childId}`
+  childId: string;
+  userId: string;
+  contactId: string;
+  at: string; // ISO time of the newest message that was read
+}

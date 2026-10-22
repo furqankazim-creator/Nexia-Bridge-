@@ -12,6 +12,17 @@ export const isClinical = (user) => isStaff(user) && !isAdmin(user);
  */
 export const ADMIN_READ = new Set(['targets', 'savedSessions', 'homeTasks', 'bips', 'teamRequests']);
 
+/** Chat threads. A thread belongs to one role: only that role may write to the family in it. */
+export const THREAD_OWNER = {
+  speech: 'contact-slp',
+  ot: 'contact-ot',
+  behavior: 'contact-bcba',
+  teacher: 'contact-teacher',
+  remedial: 'contact-teacher',
+  supervisor: 'contact-circle',
+};
+export const THREAD_IDS = [...new Set(Object.values(THREAD_OWNER))];
+
 /** Roles a parent can pick when sharing a medical record. */
 export const SHARE_ROLES = ['behavior', 'speech', 'ot', 'remedial', 'teacher', 'supervisor'];
 export const MEDICAL_CATEGORIES = ['diagnosis', 'doctor', 'neuro', 'medication', 'lab', 'therapy', 'school', 'vaccine', 'allergy', 'hospital', 'insurance', 'other'];
@@ -58,6 +69,9 @@ export const POLICY = {
   // Medical reports and history. Only a parent writes them; staff read only what the parent chose to share
   // (with the whole team or with chosen roles). Administrators never read them.
   medicalRecords: { read: 'all', write: 'parent', staffVisible: (d, user) => sharedWith(d, user.role) },
+  // Where each person left off in each chat: unread counts follow them to a new device, and the other side's
+  // "read" ticks come from it. A mark holds no message text. Only its owner can write it (the server fixes the owner).
+  readMarks: { read: 'all', write: 'all' },
   // Messages: anyone on the child's team, create-only. Parents never see audience:"staff".
   messages: { read: 'all', write: 'all', createOnly: true, parentVisible: (d) => d && d.audience !== 'staff' },
 };

@@ -3,7 +3,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useRef 
 import confetti from 'canvas-confetti';
 import { useAuth } from './AuthContext';
 import { useServerSync, SyncCol, OutMessage, RemoteMessage } from '../sync/useServerSync';
-import { OWN_THREAD } from '../utils/threads';
+import { OWN_THREAD, THREAD_ROLES, ROLE_TITLE } from '../utils/threads';
 import { primaryPercent } from '../utils/primaryPercent';
 import { parseMastery } from '../utils/decisionSupport';
 import { 
@@ -25,6 +25,7 @@ import {
   Reinforcer,
   HomeTask,
   MedicalRecord,
+  ReadMark,
   WeeklyQuestionSet,
   SentenceTask,
   SentenceAttempt,
@@ -99,7 +100,11 @@ interface AppContextType extends SupervisionApi {
   contacts: ChatContact[];
   activeContactId: string | null;
   setActiveContactId: (id: string | null) => void;
-  sendContactMessage: (contactId: string, text: string, goalTag?: string, attachment?: MessageAttachment) => void;
+  sendContactMessage: (contactId: string, text: string, goalTag?: string, attachment?: MessageAttachment, childId?: string) => void;
+  /** Unread messages in a chat (for one child, or all the children when none is given). */
+  unreadFor: (contactId: string, childId?: string) => number;
+  /** How many of my latest messages in this chat the other side has not opened yet. */
+  unreadByOtherFor: (contactId: string, childId?: string) => number;
   /** Posts a saved SOAP note into the chosen care-team threads (in-app only) and notifies them. */
   shareSoapNote: (contactIds: string[], payload: { text: string; childName: string; authorName: string; authorRole: RoleType; tag?: string; childId?: string }) => void;
 
@@ -127,7 +132,7 @@ interface AppContextType extends SupervisionApi {
   logout: () => void;
   /** Staff only: the invite code to give each family. */
   inviteCodes: { id: string; name: string; inviteCode?: string }[];
-  markContactRead: (contactId: string) => void;
+  markContactRead: (contactId: string, childId?: string) => void;
 
   // Target management (therapist)
   addTarget: (t: Omit<Target, 'id' | 'currentPerformance' | 'lastThreeSessions' | 'approvalStatus' | 'suggestedAction' | 'suggestedNextStep'> & Partial<Target>) => string;
@@ -332,11 +337,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [messages, setMessages] = useState<MessageItem[]>(INITIAL_MESSAGES);
   
   // Contacts list matching Screenshot 3
-  const [contacts, setContacts] = useState<ChatContact[]>(INITIAL_CONTACTS);
+  // The real system starts with empty chats: the demo conversations are practice data only.
+  const [contactsRaw, setContacts] = useState<ChatContact[]>(() =>
+    isServerMode ? INITIAL_CONTACTS.map(c => ({ ...c, messages: [], lastMessage: '', timestamp: '', unreadCount: 0, unreadStaff: 0, online: false })) : INITIAL_CONTACTS
+  );
+  // Where this person left off in each chat. Kept on the server so unread counts follow them to another device.
+  const [readMarks, setReadMarks] = useState<ReadMark[]>([]);
   const [activeContactId, setActiveContactId] = useState<string | null>(null);
 
   // Notifications matching Screenshot 1 bell
-  const [notifications, setNotifications] = useState<AppNotification[]>(INITIAL_NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<AppNotification[]>(isServerMode ? [] : INITIAL_NOTIFICATIONS);
 
   const [observations, setObservations] = useState<ObservationRecord[]>([
     {
@@ -791,14 +801,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showNotification('Message sent to child care team.');
   };
 
-  const sendContactMessage = (contactId: string, text: string, goalTag?: string, attachment?: MessageAttachment) => {
+  const sendContactMessage = (contactId: string, text: string, goalTag?: string, attachment?: MessageAttachment, forChildId?: string) => {
     if (role === 'parent' && !org.parentMessaging) {
       showNotification('Messaging is turned off by your administrator.');
       return;
     }
     const newMsg: MessageItem = {
       id: `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-      childId: selectedChildId,
+      childId: forChildId ?? selectedChildId,
       senderName: currentUserName,
       senderRole: role || 'parent',
       senderAvatar: activeChild.avatar,
@@ -1029,15 +1039,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const addSensoryLog: AppContextType['addSensoryLog'] = (l) => setOtSensory(prev => [{ ...l, id: uid('sen'), at: new Date().toISOString() }, ...prev]);
   const deleteSensoryLog = (id: string) => setOtSensory(prev => prev.filter(x => x.id !== id));
 
-  const markContactRead = (contactId: string) =>
-    setContacts(prev =>
-      prev.map(c => {
-        if (c.id !== contactId) return c;
-        // Each side clears only its own unread mark.
-        if (role === 'parent') return c.unreadCount ? { ...c, unreadCount: 0 } : c;
-        return c.unreadStaff ? { ...c, unreadStaff: 0 } : c;
+  const iAmParent = role === 'parent';
+  /** Messages from the other side that arrived after this person last opened the chat. */
+  const unreadFor = (contactId: string, childId?: string): number => {
+    const c = contactsRaw.find(x => x.id === contactId);
+    if (!c) return 0;
+    if (!isServerMode) return (iAmParent ? c.unreadCount : c.unreadStaff) ?? 0;
+    return c.messages.filter(m => {
+      if (childId && m.childId !== childId) return false;
+      if (iAmParent ? m.isParent || m.audience === 'staff' : !m.isParent) return false; // only what the other side wrote to me
+      const mark = readMarks.find(r => r.userId === serverUser?.id && r.contactId === contactId && r.childId === m.childId);
+      return !!m.at && (!mark || m.at > mark.at);
+    }).length;
+  };
+
+  const unreadByOtherFor = (contactId: string, childId?: string): number => {
+    const c = contactsRaw.find(x => x.id === contactId);
+    if (!c) return 0;
+    if (!isServerMode) return (iAmParent ? c.unreadStaff : c.unreadCount) ?? 0;
+    return c.messages.filter(m => {
+      if (childId && m.childId !== childId) return false;
+      if (iAmParent ? !m.isParent : m.isParent || m.audience === 'staff') return false; // what I wrote to them
+      const seen = readMarks.filter(r => r.userId !== serverUser?.id && r.contactId === contactId && r.childId === m.childId).map(r => r.at).sort().pop();
+      return !!m.at && (!seen || m.at > seen);
+    }).length;
+  };
+
+  const markContactRead = (contactId: string, childId?: string) => {
+    if (!isServerMode) {
+      setContacts(prev =>
+        prev.map(c => {
+          if (c.id !== contactId) return c;
+          // Each side clears only its own unread mark.
+          if (role === 'parent') return c.unreadCount ? { ...c, unreadCount: 0 } : c;
+          return c.unreadStaff ? { ...c, unreadStaff: 0 } : c;
+        })
+      );
+      return;
+    }
+    const kid = childId ?? selectedChildId;
+    const thread = contactsRaw.find(c => c.id === contactId);
+    if (!serverUser || !thread || !kid) return;
+    // The mark points at the newest message (the server's clock), so a device clock that is off cannot hide or invent unread.
+    const newest = thread.messages.filter(m => m.childId === kid && m.at).map(m => m.at!).sort().pop();
+    if (!newest) return;
+    const id = `${serverUser.id}:${contactId}:${kid}`;
+    setReadMarks(prev => {
+      const was = prev.find(r => r.id === id);
+      if (was && was.at >= newest) return prev;
+      return [...prev.filter(r => r.id !== id), { id, childId: kid, userId: serverUser.id, contactId, at: newest }];
+    });
+  };
+
+  // What the screens see: in the real system the contact list is the child's actual team, and unread comes from the marks.
+  const contacts = useMemo<ChatContact[]>(() => {
+    if (!isServerMode) return contactsRaw;
+    const team = activeChild.assignedTeam ?? [];
+    const isAr = language === 'ar';
+    return contactsRaw
+      .map(c => {
+        const members = team.filter(m => (THREAD_ROLES[c.id] ?? []).includes(m.role));
+        const first = members[0];
+        return {
+          ...c,
+          members: members.length,
+          name: members.length ? members.map(m => m.name).join(' & ') : c.name,
+          roleTitle: members.length ? (first.title || (ROLE_TITLE[first.role]?.[isAr ? 'ar' : 'en'] ?? c.roleTitle)) : c.roleTitle,
+          avatarInitial: (members[0]?.name.trim()[0] ?? c.avatarInitial).toUpperCase(),
+          online: false,
+          // Same meaning as in the practice version: unreadCount = the parent has unread, unreadStaff = the team has unread.
+          unreadCount: iAmParent ? unreadFor(c.id, activeChild.id) : unreadByOtherFor(c.id, activeChild.id),
+          unreadStaff: iAmParent ? unreadByOtherFor(c.id, activeChild.id) : unreadFor(c.id, activeChild.id),
+        };
       })
-    );
+      // A parent only sees the people who are really on this child's team.
+      .filter(c => !iAmParent || (c as ChatContact & { members: number }).members > 0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contactsRaw, readMarks, isServerMode, activeChild.id, activeChild.assignedTeam, language, iAmParent]);
 
   /* ---------------- server sync (only when signed in to a server) ---------------- */
   const syncCols: SyncCol[] = [
@@ -1047,6 +1125,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     { col: 'bips', items: bips, apply: fn => setBips(fn as (p: BipPlan[]) => BipPlan[]), rid: (x: BipPlan) => x.childId },
     { col: 'reinforcers', items: reinforcers, apply: fn => setReinforcers(fn as (p: Reinforcer[]) => Reinforcer[]), rid: (x: Reinforcer) => x.id },
     { col: 'medicalRecords', items: allMedical, apply: fn => setAllMedical(fn as (p: MedicalRecord[]) => MedicalRecord[]), rid: (x: MedicalRecord) => x.id },
+    { col: 'readMarks', items: readMarks, apply: fn => setReadMarks(fn as (p: ReadMark[]) => ReadMark[]), rid: (x: ReadMark) => x.id },
     { col: 'homeTasks', items: homeTasks, apply: fn => setHomeTasks(fn as (p: HomeTask[]) => HomeTask[]), rid: (x: HomeTask) => x.id },
     { col: 'weeklyQuestions', items: weeklySets, apply: fn => setWeeklySets(fn as (p: WeeklyQuestionSet[]) => WeeklyQuestionSet[]), rid: (x: WeeklyQuestionSet) => x.id },
     { col: 'articulationLogs', items: articulationLogs, apply: fn => setArticulationLogs(fn as (p: ArticulationLog[]) => ArticulationLog[]), rid: (x: ArticulationLog) => x.id },
@@ -1061,7 +1140,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Messages written on this device, waiting to reach the server (seed messages never are).
   const outMessages = useMemo<OutMessage[]>(
     () =>
-      contacts.flatMap(c =>
+      contactsRaw.flatMap(c =>
         c.messages
           .filter(m => m.id.startsWith('msg-'))
           .map(m => ({
@@ -1070,11 +1149,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             payload: { id: m.id, contactId: c.id, contentEn: m.contentEn, contentAr: m.contentAr, goalTag: m.goalTag, audience: m.audience ?? 'family', ...(m.attachment ? { attachment: m.attachment } : {}) },
           }))
       ),
-    [contacts]
+    [contactsRaw]
   );
 
-  const contactsRef = useRef(contacts);
-  contactsRef.current = contacts;
+  const contactsRef = useRef(contactsRaw);
+  contactsRef.current = contactsRaw;
 
   const handleRemoteMessages = (msgs: RemoteMessage[], first: boolean) => {
     if (msgs.length === 0) return;
@@ -1118,11 +1197,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           messages: [...c.messages, ...mine.map(f => f.item)],
           lastMessage: last.contentEn.split('\n')[0].slice(0, 60) || (last.attachment?.kind === 'audio' ? '🎤 Voice message' : '📷 Photo'),
           timestamp: last.timestamp,
-          ...(first
-            ? {}
-            : role === 'parent'
-            ? { unreadCount: (c.unreadCount || 0) + mine.filter(f => !f.mine).length }
-            : { unreadStaff: (c.unreadStaff || 0) + mine.filter(f => !f.mine).length }),
         };
       })
     );
@@ -1232,6 +1306,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         logout: auth.logout,
         inviteCodes: auth.children_,
         markContactRead,
+        unreadFor,
+        unreadByOtherFor,
 
         addTarget,
         updateTarget,

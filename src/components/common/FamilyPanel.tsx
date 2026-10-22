@@ -22,25 +22,26 @@ const Field: React.FC<{ label: string; children: React.ReactNode }> = ({ label, 
 
 /** Unread messages waiting in this therapist's own thread (for tab badges). */
 export const useUnreadForRole = (): number => {
-  const { role, contacts } = useApp();
+  const { role, unreadFor } = useApp();
   const id = role ? OWN_THREAD[role] : undefined;
-  return contacts.find((c) => c.id === id)?.unreadStaff ?? 0;
+  return id ? unreadFor(id) : 0; // across all of this person's children
 };
 
 /** The therapist's chat with the child's parents. Parents' replies arrive here. */
-export const ParentChat: React.FC = () => {
-  const { activeChild, language, role, contacts, sendContactMessage, markContactRead, isServerMode, inviteCodes, currentUserName, showNotification } = useApp();
+export const ParentChat: React.FC<{ childId?: string; embedded?: boolean }> = ({ childId, embedded }) => {
+  const { activeChild: current, childrenList, language, role, contacts, unreadFor, unreadByOtherFor, sendContactMessage, markContactRead, isServerMode, inviteCodes, currentUserName, showNotification } = useApp();
+  const activeChild = (childId && childrenList.find((c) => c.id === childId)) || current;
   const isAr = language === 'ar';
   const t = (en: string, ar: string) => (isAr ? ar : en);
   const ownThread = role ? OWN_THREAD[role] : undefined;
   const thread = contacts.find((c) => c.id === ownThread);
-  const unread = thread?.unreadStaff ?? 0;
+  const unread = ownThread ? unreadFor(ownThread, activeChild.id) : 0;
   const msgs = (thread?.messages ?? []).filter((m) => !m.childId || m.childId === activeChild.id);
 
   // Opening the chat, or a new message arriving while it is open, counts as read.
   useEffect(() => {
-    if (ownThread && unread > 0) markContactRead(ownThread);
-  }, [ownThread, unread, msgs.length]);
+    if (ownThread && unread > 0) markContactRead(ownThread, activeChild.id);
+  }, [ownThread, unread, msgs.length, activeChild.id]);
 
   // Mine: sent by me, or (offline demo, one device) by anyone in my own role.
   const mine = (m: (typeof msgs)[number]) => !m.isParent && (m.senderName === currentUserName || m.senderName.startsWith(currentUserName) || (!isServerMode && m.senderRole === role));
@@ -55,7 +56,7 @@ export const ParentChat: React.FC = () => {
         <ChatThread
           messages={msgs}
           isMine={mine}
-          unreadByOther={thread?.unreadCount ?? 0}
+          unreadByOther={ownThread ? unreadByOtherFor(ownThread, activeChild.id) : 0}
           isAr={isAr}
           showNames
           emptyText={t('No messages yet. Say hello to the family.', 'لا توجد رسائل بعد. ابدأ بالتحية.')}
@@ -67,11 +68,11 @@ export const ParentChat: React.FC = () => {
           placeholder={t('Write to the parents…', 'اكتب إلى الأهل…')}
           disabled={!ownThread}
           notify={showNotification}
-          onSend={(text, attachment) => { if (ownThread) sendContactMessage(ownThread, text, undefined, attachment); }}
+          onSend={(text, attachment) => { if (ownThread) sendContactMessage(ownThread, text, undefined, attachment, activeChild.id); }}
         />
       </section>
 
-      {isServerMode && inviteCodes.some((c) => c.inviteCode) && (
+      {isServerMode && !embedded && inviteCodes.some((c) => c.inviteCode) && (
         <section className={CARD}>
           <h3 className="font-heading font-bold text-base text-[#0F2A27] dark:text-white">{t('Family invite codes', 'رموز دعوة الأسر')}</h3>
           <p className="text-xs text-[#5C706C]">{t('Give a parent the code for their child. They enter it when creating their account.', 'أعطِ ولي الأمر رمز طفله ليدخله عند إنشاء حسابه.')}</p>

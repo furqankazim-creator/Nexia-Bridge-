@@ -8,7 +8,7 @@ import crypto from 'node:crypto';
 import { User, Child, Center, RecordDoc, AuditLog, MedicalFile, nextSeq, ROLES } from './models.js';
 import { registerAdminRoutes } from './admin.js';
 import { getSettings, seatsUsed, publicOrg } from './settings.js';
-import { POLICY, isStaff, isAdmin, isClinical, canRead, canSeeRecord, shapeData, accessMatrix, hasChild, normalizeSharing, MEDICAL_CATEGORIES } from './policy.js';
+import { POLICY, isStaff, isAdmin, isClinical, canRead, canSeeRecord, shapeData, accessMatrix, hasChild, normalizeSharing, MEDICAL_CATEGORIES, THREAD_OWNER, THREAD_IDS } from './policy.js';
 
 // Record changes worth keeping in the audit trail (routine chat/practice sync is not).
 const AUDITED_COLS = new Set(['targets', 'savedSessions', 'bips', 'teamRequests', 'templates', 'medicalRecords']);
@@ -258,6 +258,22 @@ export function createApp({ jwtSecret, staffInviteCode, adminInviteCode = null, 
       if (dropped.length) await MedicalFile.deleteMany({ _id: { $in: dropped }, childId });
     }
     if (col === 'messages' && !staff && !(await getSettings()).policy.parentMessaging) return res.status(403).json({ error: 'Messaging for families is switched off by your administrator.' });
+    if (col === 'readMarks') {
+      // A mark belongs to the person who made it: the id, the owner and the time it points at are fixed here.
+      const at = typeof data.at === 'string' && !Number.isNaN(Date.parse(data.at)) ? new Date(data.at).toISOString() : new Date().toISOString();
+      const contactId = String(data.contactId || '');
+      if (!THREAD_IDS.includes(contactId)) return res.status(400).json({ error: 'Unknown chat.' });
+      if (rid !== `${req.user._id}:${contactId}:${childId}`) return res.status(400).json({ error: 'Invalid id.' });
+      next = { id: rid, childId, userId: String(req.user._id), contactId, at };
+    }
+    if (col === 'messages') {
+      if (!THREAD_IDS.includes(next.contactId)) return res.status(400).json({ error: 'Choose which chat this message belongs to.' });
+      next.contentEn = clip(next.contentEn, 4000);
+      next.contentAr = typeof next.contentAr === 'string' ? clip(next.contentAr, 4000) : next.contentEn;
+      if (!next.contentEn && !next.attachment) return res.status(400).json({ error: 'A message needs some text or a voice note.' });
+      // A therapist writes to the family only in their own chat. Anything they put in another chat is a note to colleagues.
+      if (staff && THREAD_OWNER[req.user.role] !== next.contactId) next.audience = 'staff';
+    }
     if (col === 'messages' && next.attachment !== undefined) {
       // A photo or voice note travels inside the message. Keep it to a small, real media data URL.
       const at = next.attachment;

@@ -590,10 +590,10 @@ test('organisation settings: plan and seats are enforced, sign-up switches and s
 
   // messaging for families
   await patch(A, '/api/admin/settings', { policy: { parentMessaging: false } });
-  assert.equal((await put(parent.body.token, 'messages', 'm-off', 'child-a', { id: 'm-off', text: 'hi' })).status, 403);
-  assert.equal((await put(therapist.body.token, 'messages', 'm-staff', 'child-a', { id: 'm-staff', text: 'hello' })).status, 200, 'staff can still write');
+  assert.equal((await put(parent.body.token, 'messages', 'm-off', 'child-a', { id: 'm-off', contactId: 'contact-slp', contentEn: 'hi' })).status, 403);
+  assert.equal((await put(therapist.body.token, 'messages', 'm-staff', 'child-a', { id: 'm-staff', contactId: 'contact-bcba', contentEn: 'hello' })).status, 200, 'staff can still write');
   await patch(A, '/api/admin/settings', { policy: { parentMessaging: true } });
-  assert.equal((await put(parent.body.token, 'messages', 'm-on', 'child-a', { id: 'm-on', text: 'hi' })).status, 200);
+  assert.equal((await put(parent.body.token, 'messages', 'm-on', 'child-a', { id: 'm-on', contactId: 'contact-slp', contentEn: 'hi' })).status, 200);
 
   // staff code rotation
   const rot = await post(A, '/api/admin/settings/staff-code');
@@ -658,7 +658,7 @@ test('messages may carry a small photo or voice note, nothing else', async () =>
   const jpeg = 'data:image/jpeg;base64,' + Buffer.from('tiny image').toString('base64');
   const voice = 'data:audio/webm;codecs=opus;base64,' + Buffer.from('tiny voice').toString('base64');
   assert.equal((await put(P, 'messages', 'm-img', 'child-a', { id: 'm-img', contactId: 'contact-slp', contentEn: '', attachment: { kind: 'image', src: jpeg } })).status, 200);
-  assert.equal((await put(T, 'messages', 'm-voice', 'child-a', { id: 'm-voice', contactId: 'contact-slp', contentEn: '', attachment: { kind: 'audio', src: voice, seconds: 12.4 } })).status, 200);
+  assert.equal((await put(T, 'messages', 'm-voice', 'child-a', { id: 'm-voice', contactId: 'contact-bcba', contentEn: '', attachment: { kind: 'audio', src: voice, seconds: 12.4 } })).status, 200);
   const got = (await sync(P)).records.find((r) => r.col === 'messages' && r.rid === 'm-voice').data;
   assert.equal(got.attachment.kind, 'audio');
   assert.equal(got.attachment.seconds, 12);
@@ -721,4 +721,37 @@ test('medical records: parent saves, shares by role; staff read only what is sha
   assert.equal((await call('DELETE', '/api/records/medicalRecords/med-1', null, T)).status, 403, 'staff cannot delete');
   assert.equal((await call('DELETE', '/api/records/medicalRecords/med-1', null, P)).status, 200);
   assert.equal((await open(P, 'file-001')).status, 404, 'file is removed with its record');
+});
+
+test('chats: threads belong to a role, colleagues get notes only, read marks cannot be forged', async () => {
+  const T = therapist.body.token, P = parent.body.token, O = otherParent.body.token, S = supervisor.body.token, A = admin.body.token;
+  // a message must say which chat it is in, and have something in it
+  assert.equal((await put(P, 'messages', 'c-1', 'child-a', { id: 'c-1', contentEn: 'no chat' })).status, 400);
+  assert.equal((await put(P, 'messages', 'c-2', 'child-a', { id: 'c-2', contactId: 'contact-bogus', contentEn: 'x' })).status, 400);
+  assert.equal((await put(P, 'messages', 'c-3', 'child-a', { id: 'c-3', contactId: 'contact-slp', contentEn: '   ' })).status, 400, 'empty message');
+  // the parent writes to the supervisor's chat; the supervisor reads it, the other family and the admin never do
+  assert.equal((await put(P, 'messages', 'c-4', 'child-a', { id: 'c-4', contactId: 'contact-circle', contentEn: 'Hello supervisor' })).status, 200);
+  const seen = (tok) => sync(tok).then((x) => x.records.find((r) => r.col === 'messages' && r.rid === 'c-4'));
+  assert.equal((await seen(S)).data.contactId, 'contact-circle');
+  assert.equal(await seen(O), undefined);
+  assert.equal(await seen(A), undefined);
+  // a behavior therapist writing into the speech chat can only leave a note for colleagues: the parent never receives it
+  assert.equal((await put(T, 'messages', 'c-5', 'child-a', { id: 'c-5', contactId: 'contact-slp', contentEn: 'note to speech', audience: 'family' })).status, 200);
+  assert.ok(!(await sync(P)).records.some((r) => r.rid === 'c-5'), 'parent must not receive a colleague note');
+  assert.equal((await sync(T)).records.find((r) => r.rid === 'c-5').data.audience, 'staff');
+  // in their own chat the therapist reaches the parent
+  assert.equal((await put(T, 'messages', 'c-6', 'child-a', { id: 'c-6', contactId: 'contact-bcba', contentEn: 'hello parent' })).status, 200);
+  assert.ok((await sync(P)).records.some((r) => r.rid === 'c-6'));
+
+  // read marks: own only, owner fixed by the server, only for known chats
+  const uid = (r) => r.body.user.id;
+  const mid = (r, c) => `${uid(r)}:${c}:child-a`;
+  assert.equal((await put(P, 'readMarks', mid(parent, 'contact-bcba'), 'child-a', { contactId: 'contact-bcba', at: '2026-10-20T10:00:00.000Z', userId: 'someone-else' })).status, 200);
+  const mark = (await sync(P)).records.find((r) => r.col === 'readMarks');
+  assert.equal(mark.data.userId, uid(parent), 'owner cannot be forged');
+  assert.ok((await sync(T)).records.some((r) => r.col === 'readMarks' && r.data.userId === uid(parent)), 'the team sees that the parent read (for ticks)');
+  assert.ok(!(await sync(O)).records.some((r) => r.col === 'readMarks'), 'another family sees none');
+  assert.ok(!(await sync(A)).records.some((r) => r.col === 'readMarks'), 'admin receives no marks');
+  assert.equal((await put(P, 'readMarks', mid(therapist, 'contact-bcba'), 'child-a', { contactId: 'contact-bcba' })).status, 400, 'cannot write another person\'s mark');
+  assert.equal((await put(P, 'readMarks', mid(parent, 'contact-nope'), 'child-a', { contactId: 'contact-nope' })).status, 400);
 });
