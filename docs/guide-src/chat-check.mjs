@@ -4,7 +4,7 @@
 import puppeteer from 'puppeteer-core';
 import { CHROME, w, tab, press, fill } from './capture-lib.mjs';
 const API='http://127.0.0.1:4100', WEB='http://127.0.0.1:3116/';
-const PC='B66E2210', SC='E2ESTAFF', AC='E2EADMIN';
+const PC='33B170A1', SC='E2ESTAFF', AC='E2EADMIN';
 const O='/private/tmp/claude-501/-Users-imac-Desktop-Autism-4/3b2be0ae-852c-4feb-8018-d9b069587c94/scratchpad/';
 const call=async(m,u,b,t)=>{const r=await fetch(API+u,{method:m,headers:{'content-type':'application/json',...(t?{authorization:'Bearer '+t}:{})},body:b?JSON.stringify(b):undefined});return {status:r.status,body:await r.json().catch(()=>({}))};};
 const reg=(name,email,role,code)=>call('POST','/api/auth/register',{name,email,password:'password123',role,code});

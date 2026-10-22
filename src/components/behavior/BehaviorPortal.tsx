@@ -103,7 +103,10 @@ export const BehaviorPortal: React.FC = () => {
   const selectedMeasures = currentPlan.measureIds;
 
   // Active target for DTT session
-  const behaviorTarget = targets.find(t => t.discipline === 'behavior' && t.childId === activeChild.id) || targets.find(t => t.discipline === 'behavior') || targets[0];
+  // A child with no behavior goal yet gets a placeholder (nothing can be saved against it), never another child's goal.
+  const behaviorTarget: Target =
+    targets.find(t => t.discipline === 'behavior' && t.childId === activeChild.id) ??
+    { id: '', childId: activeChild.id, discipline: 'behavior', name: 'No behavior goal yet', domain: '', operationalDefinition: '', materials: [], procedureSteps: [], masteryCriterion: '90% across 3 sessions', criterionThreshold: 90, currentPerformance: 0, status: 'baseline', suggestedAction: '', suggestedNextStep: '', approvalStatus: 'approved', lastThreeSessions: [] };
 
   // Previous scores for this child + target (oldest first) feed trials-to-criterion.
   const scoreHistory = savedSessions
@@ -119,9 +122,7 @@ export const BehaviorPortal: React.FC = () => {
   const currentPromptLevel = ds.s.promptLevel;
 
   // Notes state
-  const [sessionNotes, setSessionNotes] = useState(
-    'Leo participated actively in DTT trials for object identification. Responded well to verbal prompt fading on "shoe" and "cup". Mild vocal protest at trial 5 resolved with brief sensory break.'
-  );
+  const [sessionNotes, setSessionNotes] = useState('');
 
   const buildSessionPayload = (notes: string) => ({
     childId: activeChild.id,
@@ -137,6 +138,10 @@ export const BehaviorPortal: React.FC = () => {
   });
 
   const handleSaveSession = () => {
+    if (!behaviorTarget.id) {
+      showNotification(isAr ? 'أضف هدفاً سلوكياً أولاً من تبويب الأهداف.' : 'Add a behavior goal first (Targets tab), then save the datasheet.');
+      return;
+    }
     const summary = ds.buildSummary(plan);
     saveSession(buildSessionPayload(sessionNotes));
 

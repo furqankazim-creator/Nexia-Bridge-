@@ -326,8 +326,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isServerMode]);
   const [targets, setTargets] = useState<Target[]>(() => {
+    // The real system starts with no goals: the sample goals belong to the practice version only.
+    if (isServerMode) return [];
     const stored = load<Target[]>(TARGETS_KEY, INITIAL_TARGETS);
-    if (isServerMode) return stored;
     // The first four demo goals used to point at a child who does not exist. Move them to Maya and Tariq.
     const fix: Record<string, string> = { 'target-1': 'child-2', 'target-2': 'child-2', 'target-3': 'child-3', 'target-4': 'child-3' };
     return stored.map(t => (fix[t.id] && t.childId !== fix[t.id] ? { ...t, childId: fix[t.id] } : t));
@@ -954,14 +955,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const removeReinforcer = (id: string) => setReinforcers(prev => prev.filter(r => r.id !== id));
 
   const addHomeTask: AppContextType['addHomeTask'] = (t) => {
-    setHomeTasks(prev => [{ ...t, id: uid('ht'), done: false, doneAt: null, parentNote: '' }, ...prev]);
+    setHomeTasks(prev => [{ ...t, id: uid('ht'), done: false, doneAt: null, parentNote: '', createdAt: new Date().toISOString() }, ...prev]);
     showNotification('Home task assigned to the family.');
   };
   const setHomeTaskDone = (id: string, done: boolean, parentNote?: string) =>
     setHomeTasks(prev => prev.map(t => (t.id === id ? { ...t, done, doneAt: done ? new Date().toISOString() : null, parentNote: parentNote ?? t.parentNote } : t)));
   const removeHomeTask = (id: string) => setHomeTasks(prev => prev.filter(t => t.id !== id));
   const upsertHomeTask: AppContextType['upsertHomeTask'] = (t) => {
-    setHomeTasks(prev => [{ ...t, done: false, doneAt: null, parentNote: '' }, ...prev.filter(x => x.id !== t.id)]);
+    setHomeTasks(prev => [{ ...t, done: false, doneAt: null, parentNote: '', createdAt: new Date().toISOString() }, ...prev.filter(x => x.id !== t.id)]);
     showNotification('Sent to the family as home practice.');
   };
 
@@ -1116,6 +1117,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .filter(c => !iAmParent || (c as ChatContact & { members: number }).members > 0);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contactsRaw, readMarks, isServerMode, activeChild.id, activeChild.assignedTeam, language, iAmParent]);
+
+  // Real system: tell the parent about a new home task and the therapist when the family ticks one off.
+  // Only recent changes count, so signing in later does not replay old ones; each is announced once.
+  useEffect(() => {
+    if (!isServerMode) return;
+    const recent = (iso?: string | null) => !!iso && Date.now() - new Date(iso).getTime() < 3 * 60_000;
+    const fresh: AppNotification[] = [];
+    for (const h of homeTasks) {
+      if (iAmParent && !h.done && recent(h.createdAt) && h.assignedBy !== currentUserName) {
+        fresh.push({ id: `n-task-${h.id}`, title: `New home task from ${h.assignedBy || 'your therapist'}`, description: h.title, timestamp: 'Just now', type: 'session', read: false });
+      } else if (!iAmParent && h.done && recent(h.doneAt) && h.assignedBy === currentUserName) {
+        fresh.push({ id: `n-done-${h.id}-${h.doneAt}`, title: 'Home task completed', description: `${h.title}${h.parentNote ? ` — “${h.parentNote}”` : ''}`, timestamp: 'Just now', type: 'session', read: false });
+      }
+    }
+    if (fresh.length) setNotifications(prev => [...fresh.filter(f => !prev.some(p => p.id === f.id)), ...prev]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [homeTasks, isServerMode, iAmParent]);
 
   /* ---------------- server sync (only when signed in to a server) ---------------- */
   const syncCols: SyncCol[] = [

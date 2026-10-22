@@ -390,6 +390,8 @@ export interface HomeTask {
   done: boolean;
   doneAt: string | null;
   parentNote: string;
+  /** When the therapist assigned it (ISO). Older tasks do not have it. */
+  createdAt?: string;
 }
 
 /* ---------- Speech therapist records ---------- */

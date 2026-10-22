@@ -1,5 +1,6 @@
 import { HomeTasksCard } from './HomeTasksCard';
 import { MedicalRecordsPanel } from '../medical/MedicalRecords';
+import { RealHome, RealProgress, RealSessions } from './RealParent';
 import { BehaviorPlanCard } from './BehaviorPlanCard';
 import { VoiceTipsCard } from './VoiceTipsCard';
 import React, { useEffect, useState } from 'react';
@@ -138,6 +139,13 @@ export const ParentPortal: React.FC = () => {
   };
 
   const activeContact = contacts.find(c => c.id === activeContactId);
+
+  // The real system builds Home, Progress and Sessions from what the team saved (see RealParent).
+  const realNav = {
+    goTab: (tab: string) => setActiveTab(tab),
+    goDiscipline: (d: string) => { setActiveTab('Targets'); setTargetFilterDiscipline(d); },
+    openGoal: (tg: Target) => setSelectedTargetForDetail(tg),
+  };
 
   // Filter contacts matching Screenshot 3
   const filteredContacts = contacts.filter(contact => {
@@ -678,7 +686,7 @@ export const ParentPortal: React.FC = () => {
   /* TAB 2: PROGRESS (Clinical Progression & Origins)     */
   /* ---------------------------------------------------- */
   const renderProgressTab = () => {
-    const childTargets = targets.filter(t => t.childId === activeChild.id || t.childId === 'child-lama');
+    const childTargets = targets.filter(t => t.childId === activeChild.id);
     const masteredCount = childTargets.filter(t => t.status === 'mastered').length;
     const inProgressCount = childTargets.filter(t => t.status !== 'mastered').length;
 
@@ -939,7 +947,7 @@ export const ParentPortal: React.FC = () => {
   /* TAB 3: TARGETS (IEP Goals, Origin & Dynamic History) */
   /* ---------------------------------------------------- */
   const renderTargetsTab = () => {
-    const childTargets = targets.filter(t => t.childId === activeChild.id || t.childId === 'child-lama');
+    const childTargets = targets.filter(t => t.childId === activeChild.id);
 
     const filtered = childTargets.filter(t => {
       const matchesSearch = t.name.toLowerCase().includes(targetSearchQuery.toLowerCase()) ||
@@ -1806,10 +1814,10 @@ export const ParentPortal: React.FC = () => {
 
   return (
     <div className="max-w-md md:max-w-6xl mx-auto px-4 md:px-8 pt-3 md:pt-6">
-      {activeTab.toLowerCase() === 'home' && renderHomeTab()}
-      {activeTab.toLowerCase() === 'progress' && renderProgressTab()}
+      {activeTab.toLowerCase() === 'home' && (isServerMode ? <RealHome {...realNav} /> : renderHomeTab())}
+      {activeTab.toLowerCase() === 'progress' && (isServerMode ? <RealProgress {...realNav} /> : renderProgressTab())}
       {activeTab.toLowerCase() === 'targets' && renderTargetsTab()}
-      {activeTab.toLowerCase() === 'sessions' && renderSessionsTab()}
+      {activeTab.toLowerCase() === 'sessions' && (isServerMode ? <RealSessions {...realNav} /> : renderSessionsTab())}
       {activeTab.toLowerCase() === 'records' && <MedicalRecordsPanel mode="parent" />}
       {activeTab.toLowerCase() === 'messages' && renderMessagesTab()}
 

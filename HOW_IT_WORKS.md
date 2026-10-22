@@ -140,10 +140,18 @@ Parents can keep their child's medical history in the **Records** tab, even repo
 
 ---
 
-## 8. Notes, dictation and chat
+## 8. Home tasks and what the parent's screens show
+
+- **Home tasks:** a therapist assigns a task in **Family → Home tasks**. The parent sees it on **Home**, gets a notification, ticks it off and can leave a note ("He did it twice!"). The therapist sees it done with the note and gets a notification. Parents can only tick a task and add a note; they cannot change or create tasks.
+- **Parent Home, Progress and Sessions (real system):** these are built only from what the team saved. Home shows one row per discipline from the approved goals, recent updates (sessions, new home tasks, mastered goals), voice tips, the behavior plan, home tasks, a "This week" summary and quick actions. Progress lists each goal with its bar and last sessions. Sessions lists every saved session with its result. A new child with nothing saved shows friendly empty states.
+- **Practice version:** keeps the sample schedule and sample figures so the client can see a full example.
+
+---
+
+## 8b. Notes, dictation and chat
 
 - **Notes:** SOAP-style session notes with an archive. Dictation uses the browser's speech recognition, so it depends on the browser and is not available in the phone app.
-- **Family chat:** a WhatsApp-style thread between the parent and a therapist, with message bubbles, read marks, a tall conversation area and small attachments. Chat stays in the app; there is no external sharing.
+- **Family chat:** a WhatsApp-style chat, text and voice notes only. There is one chat per role (speech, OT, behavior, teacher, supervisor). The parent's list shows the child's real team by name. Unread counts are kept on the server and follow the person to a new device, and the double ticks turn blue when the other side has opened the chat. A therapist writes to the family only in their own chat; a message in another role's chat is a note to colleagues that the parent never receives. Administrators cannot read chats. The supervisor opens a child's chat from **Children → Family chat**.
 - **Home tasks:** the therapist sets a task, the parent ticks it off and can leave a note.
 
 ---
