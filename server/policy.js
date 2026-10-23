@@ -69,6 +69,8 @@ export const POLICY = {
   // Medical reports and history. Only a parent writes them; staff read only what the parent chose to share
   // (with the whole team or with chosen roles). Administrators never read them.
   medicalRecords: { read: 'all', write: 'parent', staffVisible: (d, user) => sharedWith(d, user.role) },
+  // Classroom observations by the teacher: shared with the family and the team (the teacher screen says so).
+  classroomNotes: { read: 'all', write: 'staff' },
   // Where each person left off in each chat: unread counts follow them to a new device, and the other side's
   // "read" ticks come from it. A mark holds no message text. Only its owner can write it (the server fixes the owner).
   readMarks: { read: 'all', write: 'all' },

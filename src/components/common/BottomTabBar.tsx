@@ -1,6 +1,7 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
 import { useUnreadForRole } from './FamilyPanel';
+import { useSupervisorFeedback } from './SupervisorFeedbackCard';
 import { 
   Home, Building2, CreditCard,
   TrendingUp, 
@@ -22,6 +23,7 @@ import {
 export const BottomTabBar: React.FC = () => {
   const { role, activeTab, setActiveTab, language, targets, savedSessions, childrenList, teamRequests, unreadFor } = useApp();
   const unread = useUnreadForRole();
+  const feedback = useSupervisorFeedback().total; // what the supervisor sent back, waiting for the therapist
 
   if (!role) return null;
 
@@ -40,6 +42,7 @@ export const BottomTabBar: React.FC = () => {
     if (role === 'supervisor' && id === 'Review') return waitingReview;
     if (role === 'supervisor' && id === 'Children') return unreadFor('contact-circle');
     if (role === 'admin' && id === 'Home') return openRequests;
+    if (['behavior', 'speech', 'ot', 'remedial'].includes(role) && id === 'Today') return feedback;
     return 0;
   };
 

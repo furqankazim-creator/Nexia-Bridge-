@@ -349,7 +349,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Notifications matching Screenshot 1 bell
   const [notifications, setNotifications] = useState<AppNotification[]>(isServerMode ? [] : INITIAL_NOTIFICATIONS);
 
-  const [observations, setObservations] = useState<ObservationRecord[]>([
+  const [observations, setObservations] = useState<ObservationRecord[]>(isServerMode ? [] : [
     {
       id: 'obs-1',
       studentId: 'child-lama',
@@ -657,10 +657,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addTeacherObservation = (obs: Omit<ObservationRecord, 'id' | 'timestamp'>) => {
+    const now = new Date();
     const newObs: ObservationRecord = {
       ...obs,
       id: `obs-${Date.now()}`,
-      timestamp: 'Just now'
+      childId: obs.studentId,
+      at: now.toISOString(),
+      timestamp: now.toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' }),
     };
     setObservations(prev => [newObs, ...prev]);
 
@@ -1143,6 +1146,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     { col: 'bips', items: bips, apply: fn => setBips(fn as (p: BipPlan[]) => BipPlan[]), rid: (x: BipPlan) => x.childId },
     { col: 'reinforcers', items: reinforcers, apply: fn => setReinforcers(fn as (p: Reinforcer[]) => Reinforcer[]), rid: (x: Reinforcer) => x.id },
     { col: 'medicalRecords', items: allMedical, apply: fn => setAllMedical(fn as (p: MedicalRecord[]) => MedicalRecord[]), rid: (x: MedicalRecord) => x.id },
+    { col: 'classroomNotes', items: observations, apply: fn => setObservations(fn as (p: ObservationRecord[]) => ObservationRecord[]), rid: (x: ObservationRecord) => x.id },
     { col: 'readMarks', items: readMarks, apply: fn => setReadMarks(fn as (p: ReadMark[]) => ReadMark[]), rid: (x: ReadMark) => x.id },
     { col: 'homeTasks', items: homeTasks, apply: fn => setHomeTasks(fn as (p: HomeTask[]) => HomeTask[]), rid: (x: HomeTask) => x.id },
     { col: 'weeklyQuestions', items: weeklySets, apply: fn => setWeeklySets(fn as (p: WeeklyQuestionSet[]) => WeeklyQuestionSet[]), rid: (x: WeeklyQuestionSet) => x.id },

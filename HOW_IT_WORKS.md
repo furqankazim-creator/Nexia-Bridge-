@@ -144,6 +144,8 @@ Parents can keep their child's medical history in the **Records** tab, even repo
 
 - **Home tasks:** a therapist assigns a task in **Family → Home tasks**. The parent sees it on **Home**, gets a notification, ticks it off and can leave a note ("He did it twice!"). The therapist sees it done with the note and gets a notification. Parents can only tick a task and add a note; they cannot change or create tasks.
 - **Parent Home, Progress and Sessions (real system):** these are built only from what the team saved. Home shows one row per discipline from the approved goals, recent updates (sessions, new home tasks, mastered goals), voice tips, the behavior plan, home tasks, a "This week" summary and quick actions. Progress lists each goal with its bar and last sessions. Sessions lists every saved session with its result. A new child with nothing saved shows friendly empty states.
+- **Goals:** a therapist's new goal waits for the supervisor. The parent sees it in **Goals** marked as waiting (and a note on Home), and it moves into Home and Progress once the supervisor approves it. A goal returned with a comment shows a badge on the therapist's Today tab and the comment inside Edit plan.
+- **Classroom notes:** what the teacher records in the classroom appears for the parent (Home updates and Sessions → From the classroom) and for the team. Nothing is invented: a child with no observations shows "No data yet".
 - **Practice version:** keeps the sample schedule and sample figures so the client can see a full example.
 
 ---

@@ -14,7 +14,7 @@ for (const [role] of roles) {
   const p=await browser.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message.slice(0,120)));
   await p.setViewport(role==='supervisor'||role==='admin'?{width:1280,height:860}:{width:390,height:1000});
   await p.goto(WEB); await w(500); await p.evaluate((t)=>{localStorage.clear();localStorage.setItem('nexia.token',t);},tok); await p.reload(); await w(3000);
-  if (role!=='parent'&&role!=='admin') { await p.evaluate(()=>[...document.querySelectorAll('header button')].find(b=>b.innerText.includes('Child:')||b.innerText.includes('children'))?.click()); await w(300); await p.evaluate(()=>[...document.querySelectorAll('header button, header [role=option], header li')].filter(b=>b.innerText.includes('Tariq')).pop()?.click()); await w(1200); }
+  if (role!=='parent'&&role!=='admin') { await p.evaluate(()=>[...document.querySelectorAll('header button')].find(b=>b.innerText.includes('Child:')||b.innerText.includes('children'))?.click()); await w(300); await p.evaluate((k)=>[...document.querySelectorAll('header button, header [role=option], header li')].filter(b=>b.innerText.includes(k)).pop()?.click(), process.env.CHILD||'Tariq'); await w(1200); }
   const labels=await p.evaluate(()=>[...document.querySelectorAll('nav button')].map(b=>b.innerText.trim().split('\n').pop().trim()).filter(Boolean));
   for (const l of labels) {
     await p.evaluate((l)=>{[...document.querySelectorAll('nav button')].find(b=>b.innerText.trim().split('\n').map(x=>x.trim()).includes(l))?.click();},l); await w(700);

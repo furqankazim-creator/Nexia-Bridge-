@@ -153,6 +153,10 @@ export interface ObservationRecord {
   observation?: string;
   timestamp: string;
   teacherName: string;
+  /** The child it is about (same as studentId): lets the note travel with the child's record. */
+  childId?: string;
+  /** When it was written (ISO). */
+  at?: string;
 }
 
 export interface AuditEvent {

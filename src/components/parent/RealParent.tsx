@@ -72,13 +72,15 @@ interface Nav {
 }
 
 const useChildData = () => {
-  const { activeChild, targets, savedSessions, homeTasks } = useApp();
+  const { activeChild, targets, savedSessions, homeTasks, observations } = useApp();
   return useMemo(() => {
+    const notes = observations.filter((o) => (o.childId ?? o.studentId) === activeChild.id && o.at).sort((a, b) => b.at!.localeCompare(a.at!));
     const goals = targets.filter((t) => t.childId === activeChild.id && t.approvalStatus === 'approved');
+    const waiting = targets.filter((t) => t.childId === activeChild.id && t.approvalStatus !== 'approved').length;
     const sessions = savedSessions.filter((s) => s.childId === activeChild.id).sort((a, b) => b.savedAt.localeCompare(a.savedAt));
     const tasks = homeTasks.filter((h) => h.childId === activeChild.id);
-    return { child: activeChild, goals, sessions, tasks };
-  }, [activeChild, targets, savedSessions, homeTasks]);
+    return { child: activeChild, goals, waiting, sessions, tasks, notes };
+  }, [activeChild, targets, savedSessions, homeTasks, observations]);
 };
 
 /* ------------------------------------------------------------------ Home */
@@ -86,7 +88,7 @@ const useChildData = () => {
 export const RealHome: React.FC<Nav> = ({ goTab, goDiscipline, openGoal }) => {
   const { isAr, t } = useT();
   const { setChildScheduleMode, contacts } = useApp();
-  const { child, goals, sessions, tasks } = useChildData();
+  const { child, goals, waiting, sessions, tasks, notes } = useChildData();
 
   const byDiscipline = (Object.keys(DISCIPLINE_LABEL) as string[])
     .map((d) => ({ d, ts: goals.filter((g) => g.discipline === d) }))
@@ -101,6 +103,9 @@ export const RealHome: React.FC<Nav> = ({ goTab, goDiscipline, openGoal }) => {
         text: `${s.therapistName} · ${s.targetName} · ${result(s, isAr)}`,
       });
     }
+    for (const n of notes.slice(0, 3)) {
+      items.push({ id: n.id, at: n.at!, icon: <Sparkles className="w-5 h-5" />, go: () => goTab('Sessions'), title: t('Classroom note', 'ملاحظة من الفصل'), text: `${n.teacherName} · ${n.activity} · ${n.result}${n.observation ? ` — ${n.observation}` : ''}` });
+    }
     for (const h of tasks.filter((x) => x.createdAt && !x.done).slice(0, 3)) {
       items.push({ id: h.id, at: h.createdAt!, icon: <CheckCircle2 className="w-5 h-5" />, go: () => undefined, title: t('New home task', 'مهمة منزلية جديدة'), text: `${h.title}${h.assignedBy ? ` · ${h.assignedBy}` : ''}` });
     }
@@ -110,7 +115,7 @@ export const RealHome: React.FC<Nav> = ({ goTab, goDiscipline, openGoal }) => {
     }
     return items.sort((a, b) => b.at.localeCompare(a.at)).slice(0, 5);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sessions, tasks, goals, isAr]);
+  }, [sessions, tasks, goals, notes, isAr]);
 
   const week = useMemo(() => {
     const since = Date.now() - 7 * DAY;
@@ -163,6 +168,15 @@ export const RealHome: React.FC<Nav> = ({ goTab, goDiscipline, openGoal }) => {
           );
         })}
       </section>
+
+      {waiting > 0 && (
+        <button type="button" onClick={() => goTab('Targets')} className={`${CARD} w-full p-4 flex items-center justify-between gap-3 text-start border-amber-200 dark:border-amber-900`}>
+          <span className="text-sm">
+            <strong>{waiting} {t(waiting === 1 ? 'new goal is' : 'new goals are', waiting === 1 ? 'هدف جديد' : 'أهداف جديدة')}</strong> {t('waiting for the supervisor’s approval. See it in Goals.', 'بانتظار اعتماد المشرف. اطّلع عليها في الأهداف.')}
+          </span>
+          <ChevronRight className="w-4 h-4 shrink-0 rtl:rotate-180" />
+        </button>
+      )}
 
       <section>
         <h3 className="font-heading text-xl font-bold mb-3">{t('Recent updates', 'آخر التحديثات')}</h3>
@@ -285,7 +299,7 @@ export const RealProgress: React.FC<Nav> = ({ goDiscipline, openGoal }) => {
 
 export const RealSessions: React.FC<Nav> = ({ goTab }) => {
   const { isAr, t } = useT();
-  const { child, sessions } = useChildData();
+  const { child, sessions, notes } = useChildData();
   const groups = useMemo(() => {
     const g = new Map<string, SavedSession[]>();
     sessions.forEach((s) => {
@@ -301,7 +315,19 @@ export const RealSessions: React.FC<Nav> = ({ goTab }) => {
         <h2 className="font-heading text-[26px] leading-tight font-bold">{t('Sessions', 'الجلسات')}</h2>
         <p className="text-sm text-[#6B6785] dark:text-[#A5A0C2] mt-1">{t(`What the team did with ${child.name}, newest first. To ask about a session, send a message.`, `ما فعله الفريق مع ${child.name}، الأحدث أولاً. للسؤال عن جلسة، أرسل رسالة.`)}</p>
       </div>
-      {groups.length === 0 && <Empty icon={<CalendarDays className="w-5 h-5" />} title={t('No sessions yet', 'لا توجد جلسات بعد')} text={t('When a therapist saves a session, it shows up here with the result.', 'عندما يحفظ المعالج جلسة تظهر هنا مع النتيجة.')} />}
+      {notes.length > 0 && (
+        <section className="space-y-2" aria-label={t('Classroom notes', 'ملاحظات الفصل')} data-testid="classroom-notes">
+          <h3 className="text-xs font-bold tracking-wider text-[#6B6785] uppercase">{t('From the classroom', 'من الفصل')}</h3>
+          {notes.slice(0, 20).map((n) => (
+            <div key={n.id} className={`${CARD} p-4 space-y-1`}>
+              <div className="flex items-start justify-between gap-2"><p className="font-bold text-sm leading-snug" dir="auto">{n.activity}</p><span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 shrink-0">{n.result}</span></div>
+              {n.observation && <p className="text-xs text-[#6B6785] dark:text-[#A5A0C2]" dir="auto">{n.observation}</p>}
+              <p className="text-[11px] text-[#6B6785] dark:text-[#A5A0C2]">{n.teacherName} · {n.goal} · {ago(n.at!, isAr)}</p>
+            </div>
+          ))}
+        </section>
+      )}
+      {groups.length === 0 && notes.length === 0 && <Empty icon={<CalendarDays className="w-5 h-5" />} title={t('No sessions yet', 'لا توجد جلسات بعد')} text={t('When a therapist saves a session, it shows up here with the result.', 'عندما يحفظ المعالج جلسة تظهر هنا مع النتيجة.')} />}
       {groups.map(([month, list]) => (
         <section key={month} className="space-y-2" aria-label={month}>
           <h3 className="text-xs font-bold tracking-wider text-[#6B6785] uppercase">{month}</h3>

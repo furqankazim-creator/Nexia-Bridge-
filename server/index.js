@@ -69,7 +69,7 @@ const adminInviteCode = process.env.ADMIN_INVITE_CODE || (PROD ? null : secret('
 if (!adminInviteCode) throw new Error('ADMIN_INVITE_CODE must be set when NODE_ENV=production');
 console.log(`Administrator invite code (organisation administrators only): ${adminInviteCode}`);
 
-const app = createApp({ jwtSecret, staffInviteCode, adminInviteCode, corsOrigin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : true });
+const app = createApp({ jwtSecret, staffInviteCode, adminInviteCode, authLimit: Number(process.env.AUTH_LIMIT) || 30, corsOrigin: process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',') : true });
 const server = app.listen(PORT, '0.0.0.0', () => console.log(`\nNexia Bridge API listening on http://0.0.0.0:${PORT}`));
 
 const shutdown = async () => {

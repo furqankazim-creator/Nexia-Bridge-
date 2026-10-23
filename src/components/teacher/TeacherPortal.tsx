@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { MedicalRecordsPanel } from '../medical/MedicalRecords';
 import { useApp } from '../../context/AppContext';
 import { useVoiceDictation } from '../../hooks/useVoiceDictation';
@@ -92,13 +92,16 @@ export const TeacherPortal: React.FC = () => {
     return Array.from(names);
   }, [childTargets]);
 
-  const [selectedGoal, setSelectedGoal] = useState<string>('Answers questions in class');
-  const [activityText, setActivityText] = useState<string>('Science: parts of a plant');
+  const [selectedGoal, setSelectedGoal] = useState<string>('');
+  const [activityText, setActivityText] = useState<string>('');
   const [selectedResult, setSelectedResult] = useState<ResultKind>('Completed independently');
-  const [observationNote, setObservationNote] = useState<string>(
-    'Answered 4 of 5 questions on their own during plant discussion.'
-  );
+  const [observationNote, setObservationNote] = useState<string>('');
   const [syncToClinicalGoal, setSyncToClinicalGoal] = useState<boolean>(true);
+  // Start on the child's own first goal (never on sample text).
+  useEffect(() => {
+    if (!selectedGoal || !goalsList.includes(selectedGoal)) setSelectedGoal(childTargets[0]?.name ?? goalsList[0] ?? '');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [goalsList, activeChild.id]);
 
   // Add new classroom generalization goal modal state
   const [showAddGoal, setShowAddGoal] = useState<boolean>(false);
@@ -130,6 +133,10 @@ export const TeacherPortal: React.FC = () => {
   );
 
   const handleSaveObservation = () => {
+    if (!selectedGoal) {
+      showNotification(t('Choose a goal first.', 'اختر هدفاً أولاً.'));
+      return;
+    }
     const cleanActivity = activityText.trim() || 'Classroom activity';
     const cleanNote = observationNote.trim();
     addTeacherObservation({
@@ -139,7 +146,7 @@ export const TeacherPortal: React.FC = () => {
       activity: cleanActivity,
       result: selectedResult,
       observation: cleanNote,
-      teacherName: currentUserName || 'Ms. Layla Fahad',
+      teacherName: currentUserName || 'Teacher',
     });
 
     // If linked to an active clinical/classroom target, also feed generalization score into target progress
@@ -186,7 +193,7 @@ export const TeacherPortal: React.FC = () => {
       masteryCriterion: '80% across 3 sessions',
       criterionThreshold: 80,
       status: 'teaching',
-      therapistName: currentUserName || 'Ms. Layla Fahad',
+      therapistName: currentUserName || 'Teacher',
       origin: 'Classroom Generalization Target',
     });
     setSelectedGoal(newGoalName.trim());
@@ -641,18 +648,13 @@ export const TeacherPortal: React.FC = () => {
           const partialCount = stObs.filter((o) => o.result === 'Partially completed').length;
           const helpCount = stObs.filter((o) => o.result === 'Needed help').length;
           const notCount = stObs.filter((o) => o.result === 'Not completed').length;
+          // No observations yet means no figure: nothing is invented.
           const indepPercent =
             stObs.length > 0
-              ? Math.round(
-                  stObs.reduce((sum, o) => sum + (RESULT_SCORE[o.result] ?? 50), 0) / stObs.length
-                )
-              : idx === 0
-              ? 85
-              : idx === 1
-              ? 90
-              : 75;
+              ? Math.round(stObs.reduce((sum, o) => sum + (RESULT_SCORE[o.result] ?? 50), 0) / stObs.length)
+              : null;
           const stGoals = targets.filter((g) => g.childId === st.id && g.approvalStatus !== 'rejected');
-          const primaryGoal = stGoals[0]?.name ?? 'Answers questions in class';
+          const primaryGoal = stGoals[0]?.name ?? t('No classroom goal yet', 'لا يوجد هدف صفي بعد');
           const isCurrent = st.id === selectedChildId;
 
           return (
@@ -677,12 +679,12 @@ export const TeacherPortal: React.FC = () => {
                       {st.name}
                     </h4>
                     <p className="text-[11px] text-[#6B6785] truncate">
-                      {st.classroom || 'Grade 1'} · {stGoals.length} {t('active goals', 'أهداف نشطة')}
+                      {st.classroom ? `${st.classroom} · ` : ''}{stGoals.length} {t('active goals', 'أهداف نشطة')}
                     </p>
                   </div>
                 </div>
                 <span className="text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950 px-2.5 py-1 rounded-full shrink-0">
-                  {indepPercent}% Indep
+                  {indepPercent !== null ? `${indepPercent}% Indep` : t('No data yet', 'لا بيانات بعد')}
                 </span>
               </div>
 
